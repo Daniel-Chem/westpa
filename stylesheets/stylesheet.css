@@ -258,6 +258,7 @@ Full-Width Styles
 
 .outer {
   width: 100%;
+  position: sticky;
 }
 
 .inner {
@@ -265,6 +266,7 @@ Full-Width Styles
   max-width: 640px;
   padding: 20px 10px;
   margin: 0 auto;
+  position: sticky;
 }
 
 #forkme_banner {
@@ -314,7 +316,7 @@ Full-Width Styles
   background: url('../images/icon_download.png') no-repeat 0% 90%;
 }
 
-#page_links{
+page_links{
   position: absolute;
   width: 750;
   z-index: 10;
@@ -328,7 +330,7 @@ Full-Width Styles
   width: 80px;
   height: 40px;
   display: block;
-  padding-right: 30px;
+  padding-right: 35px;
   color: black;
   font-size: 18px;
 }
@@ -377,6 +379,33 @@ Full-Width Styles
 
 .gh_link:hover {
  color: red;
+}
+
+.community_link {
+  float: left;
+  width: 60px;
+  height: 40px;
+  display: block;
+  padding-right: 0px;
+  color: black;
+  font-size: 18px;
+}
+
+.community_link:hover {
+ color: red;
+}
+
+.bsky_link {
+  position: relative;
+  bottom: 60px;
+  top: -10px;
+  left: 60px;
+  float: left;
+  width: 40px;
+  height: 40px;
+  display: block;
+  padding-right: 0px;
+  padding-top: 0px;
 }
 
 .logo_link {
@@ -485,7 +514,7 @@ Full-Width Styles
 Small Device Styles
 *******************************************************************************/
 
-@media screen and (max-width: 480px) {
+@media screen and (max-width : 451px ){
   body {
     font-size:14px;
   }
