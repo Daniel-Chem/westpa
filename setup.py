@@ -127,6 +127,7 @@ INSTALL_REQUIRES = [
 EXTRAS_REQUIRE = {
     "tests": ["pytest", "pytest-cov", "pytest-rerunfailures", "pytest-timeout"],
     "mpi": ["mpi4py"],
+    "openmm": ["openmm"],
 }
 
 EXTRAS_REQUIRE["dev"] = EXTRAS_REQUIRE["tests"] + ["pre-commit"]
