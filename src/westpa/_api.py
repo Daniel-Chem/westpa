@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 
 import westpa
+from .core.propagators.executable import ExecutablePropagator
 from .core.sim_manager import WESimManager
 from .core.states import BasisState, TargetState
 from .core.we_driver import WEDriver
@@ -188,7 +189,12 @@ class Simulation:
             rc._we_driver = we_driver  # noqa
             rc._system = we_driver.system  # noqa
 
+        # Workaround for wm_ops using global rc:
         westpa.rc._propagator = propagator or rc.get_propagator()  # noqa
+        # Workaround for executable.pcoord_loader() using global rc:
+        if isinstance(westpa.rc.propagator, ExecutablePropagator):
+            westpa.rc._system = rc.get_system_driver()  # noqa
+
         if work_manager is not None:
             rc.work_manager = work_manager
 
@@ -223,7 +229,6 @@ class Simulation:
                     start_states=start_states,
                     target_states=target_states,
                     segs_per_state=segments_per_state,
-                    suppress_we=True,
                 )
             else:
                 work_manager.run()
