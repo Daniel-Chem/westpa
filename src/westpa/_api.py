@@ -1,15 +1,17 @@
 import json
+import logging
+import traceback
 from dataclasses import dataclass
 
 import numpy as np
 
 import westpa
 from .core.propagators.executable import ExecutablePropagator
-from .core.sim_manager import WESimManager
 from .core.states import BasisState, TargetState
 from .core.we_driver import WEDriver
 from .core._rc import WESTRC
 
+log = logging.getLogger(__name__)
 rng = np.random.Generator(np.random.MT19937())
 
 
@@ -202,7 +204,7 @@ class Simulation:
             rc._data_manager = data_manager  # noqa
         rc.data_manager.we_h5filename = datafile
 
-        sim_manager = WESimManager(rc=rc)
+        sim_manager = rc.get_sim_manager()
         if max_run_walltime is not None:
             sim_manager.max_run_walltime = max_run_walltime
         if max_total_iterations is not None:
@@ -234,6 +236,26 @@ class Simulation:
                 work_manager.run()
 
         self._sim_manager = sim_manager
+
+    def run(self, n_iters=None):
+        sim_manager = self._sim_manager
+        with sim_manager.work_manager as work_manager:
+            if work_manager.is_master:
+                work_manager.install_sigint_handler()
+                sim_manager.load_plugins()
+                sim_manager.prepare_run()
+                try:
+                    sim_manager.run(n_iters)
+                    sim_manager.finalize_run()
+                except KeyboardInterrupt:
+                    sim_manager.rc.pstatus('interrupted; shutting down')
+                except Exception as e:
+                    sim_manager.rc.pstatus('exception caught; shutting down')
+                    if str(e) != '':
+                        log.error(f'error message: {e}')
+                    log.error(traceback.format_exc())
+            else:
+                work_manager.run()
 
 
 def basis_state_from_tuple(t):
