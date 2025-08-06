@@ -743,7 +743,7 @@ class WESimManager:
         self.data_manager.prepare_iteration(self.n_iter + 1, list(self.we_driver.next_iter_segments))
         self.data_manager.save_new_weight_data(self.n_iter + 1, self.we_driver.new_weights)
 
-    def run(self):
+    def run(self, n_iters=None):
         run_starttime = time.time()
         max_walltime = self.max_run_walltime
         if max_walltime:
@@ -753,7 +753,11 @@ class WESimManager:
             run_killtime = None
 
         self.n_iter = self.data_manager.current_iteration
-        max_iter = self.max_total_iterations or self.n_iter + 1
+
+        if n_iters is not None:
+            max_iter = self.n_iter + n_iters - 1
+        else:
+            max_iter = self.max_total_iterations or self.n_iter
 
         iter_elapsed = 0
         while self.n_iter <= max_iter:
