@@ -735,7 +735,7 @@ class WEDriver:
 
         EPS = np.finfo(weight_dtype).eps
 
-        system = system or westpa.rc.get_system_driver()
+        system = system or self.system
         self.new_iteration(
             initial_states=[], target_states=[], bin_mapper=system.bin_mapper, bin_target_counts=system.bin_target_counts
         )
