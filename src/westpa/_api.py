@@ -6,7 +6,7 @@ import numpy as np
 import westpa
 from .core.sim_manager import WESimManager
 from .core.states import BasisState, TargetState
-from .core.systems import WESTSystem
+from .core.we_driver import WEDriver
 from .core._rc import WESTRC
 
 rng = np.random.Generator(np.random.MT19937())
@@ -76,18 +76,70 @@ class ProgressCoordinate:  # TODO: Convert to regular class.
         self.dtype = np.dtype(self.dtype)
 
 
+class DefaultWEDriver(WEDriver):
+    """Performs resampling using a variant of the Huber & Kim algorithm [1]_.
+
+    Parameters
+    ----------
+    system : WESTSystem, optional
+    largest_allowed_weight : float, default 1.0
+    smallest_allowed_weight : float default 1e-310
+    weight_split_threshold : float, default 2.0
+    weight_merge_cutoff : float, default 1.0
+
+    References
+    ----------
+    .. [1] G.A. Huber, S. Kim, Biophysical Journal, Volume 70, Issue 1, 1996,
+    Pages 97-110, ISSN 0006-3495, https://doi.org/10.1016/S0006-3495(96)79552-8.
+
+    """
+
+    def __init__(
+        self,
+        *,
+        system=None,
+        largest_allowed_weight=1.0,
+        smallest_allowed_weight=1e-310,
+        weight_split_threshold=2.0,
+        weight_merge_cutoff=1.0,
+        thresholds=True,
+        adjust_counts=True,
+    ):
+        super().__init__(rc=WESTRC(), system=system)
+        self.largest_allowed_weight = largest_allowed_weight
+        self.smallest_allowed_weight = smallest_allowed_weight
+        self.weight_split_threshold = weight_split_threshold
+        self.weight_merge_cutoff = weight_merge_cutoff
+        self.thresholds = thresholds
+        self.adjust_counts = adjust_counts
+
+    @property
+    def thresholds(self):
+        return self.do_thresholds
+
+    @thresholds.setter
+    def thresholds(self, value):
+        if not isinstance(value, bool):
+            raise TypeError("'thresholds' must be True or False")
+        self.do_thresholds = value
+
+    @property
+    def adjust_counts(self):
+        return self.do_adjust_counts
+
+    @adjust_counts.setter
+    def adjust_counts(self, value):
+        if not isinstance(value, bool):
+            raise TypeError("'adjust_counts' must be True or False")
+        self.do_adjust_counts = value
+
+
 class Simulation:
     """The Simulation object provides an interface for initializing and running
     a WESTPA simulation.
 
     Parameters
     ----------
-    pcoord : ProgressCoordinate, optional
-    bin_mapper : BinMapper, optional
-        Bin mapper for grouping segments into bins.
-    bin_target_counts : int or sequence of int, optional
-        A single target count to apply to all bins, or a list of target counts,
-        one per bin. Required when `bin_mapper` is specified.
     we_driver : WEDriver, optional
     propagator : WESTPropagator, optional
     work_manager : WorkManager, optional
@@ -99,7 +151,7 @@ class Simulation:
         Mapping from target state labels to representative progress coordinates.
     segments_per_state : int, default 1
         Number of segments to initialize from each basis or start state.
-    max_run_wallclock : float, optional
+    max_run_walltime : float, optional
     max_total_iterations : int, optional
     datafile : str, default 'west.h5'
         File for storing simulation data.
@@ -110,9 +162,6 @@ class Simulation:
     def __init__(
         self,
         *,
-        pcoord=None,
-        bin_mapper=None,
-        bin_target_counts=None,
         we_driver=None,
         propagator=None,
         work_manager=None,
@@ -135,33 +184,17 @@ class Simulation:
         if rcfile is not None:
             rc.config.update_from_file(rcfile)
 
-        try:
-            system = rc.get_system_driver()
-        except ValueError:  # no system defined
-            system = WESTSystem(rc=rc)
-            rc._system = system  # noqa
-
-        if pcoord is not None:
-            system.pcoord_ndim = pcoord.ndim
-            system.pcoord_len = pcoord.len
-            system.pcoord_dtype = pcoord.dtype
-
-        if bin_mapper is not None:
-            if bin_target_counts is None:
-                raise ValueError("'bin_target_counts' must be specified")
-            if isinstance(bin_target_counts, int):
-                bin_target_counts = [bin_target_counts] * bin_mapper.nbins
-            system.bin_mapper = bin_mapper
-            system.bin_target_counts = bin_target_counts
-
         if we_driver is not None:
             rc._we_driver = we_driver  # noqa
-        if data_manager is not None:
-            rc._data_manager = data_manager  # noqa
+            rc._system = we_driver.system  # noqa
 
         westpa.rc._propagator = propagator or rc.get_propagator()  # noqa
         if work_manager is not None:
             rc.work_manager = work_manager
+
+        if data_manager is not None:
+            rc._data_manager = data_manager  # noqa
+        rc.data_manager.we_h5filename = datafile
 
         sim_manager = WESimManager(rc=rc)
         if max_run_walltime is not None:
@@ -179,9 +212,9 @@ class Simulation:
 
         # Scale basis and start state probabilities so they total to one.
         starting_states = basis_states + start_states
-        total_probability = sum(state.probability for state in starting_states)
+        scale_factor = 1 / sum(state.probability for state in starting_states)
         for state in starting_states:
-            state.probability /= total_probability
+            state.probability *= scale_factor
 
         with sim_manager.work_manager as work_manager:
             if work_manager.is_master:

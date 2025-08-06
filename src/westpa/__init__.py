@@ -1,3 +1,22 @@
+__all__ = [
+    'Segment',
+    'WESTSystem',
+    'BasisState',
+    'TargetState',
+    '_rc',
+    'Simulation',
+    'DefaultWEDriver',
+    'NopMapper',
+    'FuncBinMapper',
+    'PiecewiseBinMapper',
+    'RectilinearBinMapper',
+    'RecursiveBinMapper',
+    'VectorizingFuncBinMapper',
+    'VoronoiBinMapper',
+    'MABBinMapper',
+    'BinlessMapper',
+]
+
 from ._version import get_versions
 
 from .core.segment import Segment
@@ -5,7 +24,19 @@ from .core.systems import WESTSystem
 from .core.states import BasisState, TargetState
 from .core import _rc
 
-__all__ = ['Segment', 'WESTSystem', 'BasisState', 'TargetState', '_rc']
+from ._api import Simulation, DefaultWEDriver
+from .core.binning import (
+    NopMapper,
+    FuncBinMapper,
+    PiecewiseBinMapper,
+    RectilinearBinMapper,
+    RecursiveBinMapper,
+    VectorizingFuncBinMapper,
+    VoronoiBinMapper,
+    MABBinMapper,
+    BinlessMapper,
+)
+
 
 rc = _rc.WESTRC()
 
