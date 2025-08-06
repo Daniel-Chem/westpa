@@ -15,6 +15,7 @@ __all__ = [
     'VoronoiBinMapper',
     'MABBinMapper',
     'BinlessMapper',
+    'OpenMMPropagator',
 ]
 
 from ._version import get_versions
@@ -36,6 +37,11 @@ from .core.binning import (
     MABBinMapper,
     BinlessMapper,
 )
+
+try:
+    from .core.propagators._openmm import OpenMMPropagator
+except ImportError:
+    pass
 
 
 rc = _rc.WESTRC()
