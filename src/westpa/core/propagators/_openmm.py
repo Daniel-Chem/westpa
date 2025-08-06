@@ -2,8 +2,10 @@ import os
 
 import openmm.app
 
+from ._abc import Propagator
 
-class OpenMMPropagator:
+
+class OpenMMPropagator(Propagator):
     """Molecular dynamics propagator built on the OpenMM MD engine.
 
     This propagator assumes that segment ``initpoint`` and ``endpoint`` values
@@ -23,6 +25,8 @@ class OpenMMPropagator:
         Platform to use for calculations.
     platform_properties : Mapping[str, str], optional
         Platform-specific properties to pass to the simulation context.
+    sim_root : str, optional
+        Simulation root directory. Default is the current working directory.
     output_dir_template : str, default 'traj_segs/{segment.n_iter:06d}/{segment.seg_id:06d}'
         Directory in which to store output for a given segment.
     endpoint_filename : str, default 'endpoint.xml'
@@ -55,6 +59,7 @@ class OpenMMPropagator:
         platform=None,
         platform_properties=None,
         steps,
+        sim_root=None,
         output_dir_template="traj_segs/{segment.n_iter:06d}/{segment.seg_id:06d}",
         endpoint_filename="endpoint.xml",
         trajectory_report_interval=None,
@@ -64,7 +69,7 @@ class OpenMMPropagator:
         log_filename="seg.log",
         log_options=None,
     ):
-        self.sim_root = os.getcwd()
+        self.sim_root = os.path.abspath(sim_root) if sim_root is not None else os.getcwd()
         self.simulation = openmm.app.Simulation(
             topology,
             system,

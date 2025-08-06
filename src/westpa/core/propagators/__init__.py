@@ -1,5 +1,7 @@
-import westpa
 import itertools
+
+import westpa
+from ._abc import Propagator
 
 
 def blocked_iter(blocksize, iterable, fillvalue=None):
@@ -8,7 +10,7 @@ def blocked_iter(blocksize, iterable, fillvalue=None):
     return itertools.zip_longest(fillvalue=fillvalue, *args)
 
 
-class WESTPropagator:
+class WESTPropagator(Propagator):
     def __init__(self, rc=None):
         # For maximum flexibility, the basis states and initial states valid
         # at the point in the simulation when the propgator is used must be
@@ -44,6 +46,10 @@ class WESTPropagator:
     def propagate(self, segments):
         """Propagate one or more segments, including any necessary per-iteration setup and teardown for this propagator."""
         raise NotImplementedError
+
+    def __call__(self, segment):
+        """Propagate a single segment."""
+        return self.propagate([segment])
 
     def clear_basis_initial_states(self):
         self.basis_states = {}
