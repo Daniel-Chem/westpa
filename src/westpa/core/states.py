@@ -1,36 +1,80 @@
+import json
+
 import numpy as np
 
 from westpa.core.segment import Segment
 
 
 class BasisState:
-    '''Describes an basis (micro)state. These basis states are used to generate
+    """Describes a basis (micro)state. These basis states are used to generate
     initial states for new trajectories, either at the beginning of the simulation
     (i.e. at w_init) or due to recycling.
 
-    :ivar state_id:     Integer identifier of this state, usually set by the
-                        data manager.
-    :ivar label:        A descriptive label for this microstate (may be empty)
-    :ivar probability:  Probability of this state to be selected when creating a
-                        new trajectory.
-    :ivar pcoord:       The representative progress coordinate of this state.
+    Parameters
+    ----------
+    label : Any
+        JSON-serializable object that labels the state.
+    probability : float
+        Probability of the state to be selected when creating a new trajectory.
+    pcoord : ArrayLike, optional
+        Representative progress coordinate of the state.
+    auxref : str, optional
+        User-provided reference for locating data associated with the state
+        (usually a file system path).
+    state_id : int, optional
+        Integer identifier of the state, usually set by the data manager.
+    data : Mapping[str, ArrayLike], optional
+        Auxiliary data for the state.
 
-    :ivar auxref:       A user-provided (string) reference for locating data associated
-                        with this state (usually a filesystem path).
-    '''
+    """
 
-    def __init__(self, label, probability, pcoord=None, auxref=None, state_id=None):
-        self.label = str(label, encoding="UTF-8") if isinstance(label, bytes) else label
+    def __init__(self, label, probability, pcoord=None, auxref=None, state_id=None, data=None):
+        if isinstance(label, bytes):
+            label = label.decode('utf-8')  # TODO: Document or remove this behavior.
+        try:
+            external_id_json = json.dumps(label)
+        except TypeError:
+            raise TypeError("'label' must be JSON-serializable")
+        self._external_id = label
+        self._label = label if isinstance(label, str) else external_id_json
+
         self.probability = probability
         self.pcoord = np.atleast_1d(pcoord)
         self.auxref = auxref
         self.state_id = state_id
-        self.data = {}
+        self.data = data or {}
+
+    @property
+    def label(self):
+        """str : String label for the state."""
+        return self._label
+
+    @property
+    def external_id(self):
+        """Any : User-specified identifier for the state."""
+        return self._external_id
+
+    @property
+    def probability(self):
+        """float : Probability of the state."""
+        return self._probability
+
+    @probability.setter
+    def probability(self, value):
+        value = float(value)
+        if not (0 <= value <= 1):
+            raise ValueError("'probability' must be between 0 and 1")
+        self._probability = value
 
     def __repr__(self):
-        return '{} state_id={self.state_id!s} label={self.label!s} prob={self.probability!s} pcoord={self.pcoord!s}>'.format(
-            object.__repr__(self)[:-1], self=self
-        )
+        kwargs = []
+        for name in ('probability', 'pcoord', 'auxref', 'state_id', 'data'):
+            value = getattr(self, name)
+            if name == 'pcoord':
+                value = value.tolist()
+            kwargs.append(f'{name}={value!r}')
+        kwargs = ', '.join(kwargs)
+        return f'{type(self).__name__}({self.external_id!r}, {kwargs})'
 
     @classmethod
     def states_to_file(cls, states, fileobj):
