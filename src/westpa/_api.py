@@ -65,12 +65,15 @@ class Simulation:
     Parameters
     ----------
     we_driver : WEDriver, optional
+        Driver for resampling and recycling trajectories.
     propagator : WESTPropagator, optional
     data_manager : WESTDataManager, optional
     sim_manager : WESimManager, optional
     work_manager : WorkManager, optional
     max_run_walltime : float, optional
     max_total_iterations : int, optional
+    verbosity : {'quiet', 'verbose', 'debug'}, optional
+    status_stream : io.TextIOBase, optional
     datafile : str, default 'west.h5'
         HDF5 file to create (or overwrite) for storage of simulation data.
     rcfile : str, optional
