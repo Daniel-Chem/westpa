@@ -191,7 +191,7 @@ class ExecutablePropagator(WESTPropagator):
     ENV_RAND128 = 'WEST_RAND128'
     ENV_RANDFLOAT = 'WEST_RANDFLOAT'
 
-    def __init__(self, rc=None):
+    def __init__(self, rc=None, data_refs=None):
         super().__init__(rc)
 
         # A mapping of environment variables to template strings which will be
@@ -214,6 +214,9 @@ class ExecutablePropagator(WESTPropagator):
 
         # Validate configuration
         config = self.rc.config
+
+        if data_refs is not None:
+            config['west', 'data', 'data_refs'].update(data_refs)
 
         for key in [
             ('west', 'executable', 'propagator', 'executable'),
