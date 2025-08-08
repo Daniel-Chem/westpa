@@ -59,7 +59,7 @@ class NewWeightEntry:
 
 
 class WEDriver:
-    '''A class implemented Huber & Kim's weighted ensemble algorithm over Segment objects.
+    """A class implementing Huber & Kim's weighted ensemble algorithm [1]_ over Segment objects.
     This class handles all binning, recycling, and preparation of new Segment objects for the
     next iteration. Binning is accomplished using system.bin_mapper, and per-bin target counts
     are from system.bin_target_counts.
@@ -76,19 +76,60 @@ class WEDriver:
     Note the presence of flux_matrix, transition_matrix,
     current_iter_segments, next_iter_segments, recycling_segments,
     initial_binning, final_binning, next_iter_binning, and new_weights (to be documented soon).
-    '''
+
+    Parameters
+    ----------
+    rc : WESTRC, optional
+        Run configuration object.
+    system : WESTSystem, optional
+        Description of the progress coordinate and binning configuration.
+    weight_split_threshold : float, default 2.0
+        Threshold for splitting, in units of the "ideal weight" (the total
+        weight of the bin divided by the target count).
+    weight_merge_cutoff : float, default 1.0
+        Threshold for merging, in units of the "ideal weight".
+    largest_allowed_weight : float, default 1.0
+        Maximum allowed weight.
+    smallest_allowed_weight : float, default 1e-310
+        Minimum allowed weight.
+    thresholds : bool, default True
+        Whether to ensure weights fall between `smallest_allowed_weight` and
+        `largest_allowed_weight`. If False, these parameters are ignored.
+    adjust_counts : bool, default True
+        Whether to adjust counts to exactly match target count.
+
+    References
+    ----------
+    .. [1] G.A. Huber, S. Kim, Biophysical Journal, Volume 70, Issue 1, 1996,
+    Pages 97-110, ISSN 0006-3495, https://doi.org/10.1016/S0006-3495(96)79552-8.
+
+    """
 
     weight_split_threshold = 2.0
     weight_merge_cutoff = 1.0
     largest_allowed_weight = 1.0
     smallest_allowed_weight = 1e-310
 
-    def __init__(self, rc=None, system=None):
+    def __init__(
+        self,
+        rc=None,
+        system=None,
+        weight_split_threshold=2.0,
+        weight_merge_cutoff=1.0,
+        largest_allowed_weight=1.0,
+        smallest_allowed_weight=1e-310,
+        thresholds=True,
+        adjust_counts=True,
+    ):
         self.rc = rc or westpa.rc
         self.system = system or self.rc.get_system_driver()
 
-        # Whether to adjust counts to exactly match target count
-        self.do_adjust_counts = True
+        self.weight_split_threshold = weight_split_threshold
+        self.weight_merge_cutoff = weight_merge_cutoff
+        self.largest_allowed_weight = largest_allowed_weight
+        self.smallest_allowed_weight = smallest_allowed_weight
+        self.do_thresholds = thresholds
+        self.do_adjust_counts = adjust_counts
 
         # bin mapper and per-bin target counts (see new_iteration for initialization)
         self.bin_mapper = None
