@@ -1,13 +1,14 @@
+import io
 import logging
 import traceback
-from dataclasses import dataclass
 
 import numpy as np
 
 import westpa
 from .core.propagators.executable import ExecutablePropagator
-from .core.we_driver import WEDriver
+from .core.yamlcfg import ConfigItemMissing
 from .core._rc import WESTRC  # noqa
+from .work_managers import WorkManager
 
 log = logging.getLogger(__name__)
 rng = np.random.Generator(np.random.MT19937())
@@ -57,86 +58,6 @@ def merge(segments):
     return segment.reweight(weights.sum())
 
 
-@dataclass
-class ProgressCoordinate:  # TODO: Convert to regular class.
-    ndim: int
-    len: int
-    dtype: np.dtype = np.dtype('float32')
-
-    def __post_init__(self):
-        if not isinstance(self.ndim, int):
-            raise TypeError("'ndim' must be a integer")
-        if self.ndim < 1:
-            raise ValueError("'ndim' must be at least 1")
-
-        if not isinstance(self.len, int):
-            raise TypeError("'len' must be an integer")
-        if self.len < 2:
-            raise ValueError("'len' must be at least 2")
-
-        self.dtype = np.dtype(self.dtype)
-
-
-class DefaultWEDriver(WEDriver):
-    """Performs resampling using a variant of the Huber & Kim algorithm [1]_.
-
-    Parameters
-    ----------
-    system : WESTSystem, optional
-    largest_allowed_weight : float, default 1.0
-    smallest_allowed_weight : float default 1e-310
-    weight_split_threshold : float, default 2.0
-    weight_merge_cutoff : float, default 1.0
-    thresholds : bool, default True
-    adjust_counts : bool, default True
-
-    References
-    ----------
-    .. [1] G.A. Huber, S. Kim, Biophysical Journal, Volume 70, Issue 1, 1996,
-    Pages 97-110, ISSN 0006-3495, https://doi.org/10.1016/S0006-3495(96)79552-8.
-
-    """
-
-    def __init__(
-        self,
-        *,
-        system=None,
-        largest_allowed_weight=1.0,
-        smallest_allowed_weight=1e-310,
-        weight_split_threshold=2.0,
-        weight_merge_cutoff=1.0,
-        thresholds=True,
-        adjust_counts=True,
-    ):
-        super().__init__(rc=WESTRC(), system=system)
-        self.largest_allowed_weight = largest_allowed_weight
-        self.smallest_allowed_weight = smallest_allowed_weight
-        self.weight_split_threshold = weight_split_threshold
-        self.weight_merge_cutoff = weight_merge_cutoff
-        self.thresholds = thresholds
-        self.adjust_counts = adjust_counts
-
-    @property
-    def thresholds(self):
-        return self.do_thresholds
-
-    @thresholds.setter
-    def thresholds(self, value):
-        if not isinstance(value, bool):
-            raise TypeError("'thresholds' must be True or False")
-        self.do_thresholds = value
-
-    @property
-    def adjust_counts(self):
-        return self.do_adjust_counts
-
-    @adjust_counts.setter
-    def adjust_counts(self, value):
-        if not isinstance(value, bool):
-            raise TypeError("'adjust_counts' must be True or False")
-        self.do_adjust_counts = value
-
-
 class Simulation:
     """The Simulation object provides an interface for initializing and running
     a WESTPA simulation.
@@ -173,9 +94,6 @@ class Simulation:
         rcfile=None,
     ):
         rc = WESTRC()
-        rc.verbosity = verbosity
-        rc.status_stream = status_stream
-
         if rcfile is not None:
             rc.config.update_from_file(rcfile)
 
@@ -183,8 +101,13 @@ class Simulation:
             rc._we_driver = we_driver  # noqa
             rc._system = we_driver.system  # noqa
 
+        if propagator is None:
+            try:
+                propagator = rc.get_propagator()
+            except ConfigItemMissing:
+                raise ValueError('a propagator must be specified')
         # Workaround for wm_ops using global rc:
-        westpa.rc._propagator = propagator or rc.get_propagator()  # noqa
+        westpa.rc._propagator = propagator  # noqa
         # Workaround for executable.pcoord_loader() using global rc:
         if isinstance(westpa.rc.propagator, ExecutablePropagator):
             westpa.rc._system = rc.get_system_driver()  # noqa
@@ -197,14 +120,25 @@ class Simulation:
 
         self._sim_manager = sim_manager or rc.get_sim_manager()
 
-        if max_run_walltime is not None:
-            self.max_run_walltime = max_run_walltime
-        if max_total_iterations is not None:
-            self.max_total_iterations = max_total_iterations
+        self.max_run_walltime = max_run_walltime
+        self.max_total_iterations = max_total_iterations
+        self.verbosity = verbosity
+        self.status_stream = status_stream
 
     @property
     def sim_manager(self):
         return self._sim_manager
+
+    @property
+    def _rc(self):
+        return self.sim_manager.rc
+
+    @property
+    def data_manager(self):
+        return self.sim_manager.data_manager
+
+    def pstatus(self, *args, **kwargs):
+        self._rc.pstatus(*args, **kwargs)
 
     @property
     def we_driver(self):
@@ -212,15 +146,17 @@ class Simulation:
 
     @property
     def propagator(self):
-        return westpa.rc.propagator  # TODO: Decouple propagator from global rc.
+        return westpa.rc.propagator
 
     @property
     def work_manager(self):
         return self.sim_manager.work_manager
 
-    @property
-    def data_manager(self):
-        return self.sim_manager.data_manager
+    @work_manager.setter
+    def work_manager(self, value):
+        if not isinstance(value, WorkManager):
+            raise TypeError("'work_manager' must be a WorkManager object")
+        self.sim_manager.work_manager = value
 
     @property
     def max_run_walltime(self):
@@ -247,13 +183,34 @@ class Simulation:
                 raise ValueError("'max_total_iterations' must be greater than zero")
         self.sim_manager.max_total_iterations = value
 
+    @property
+    def verbosity(self):
+        return self._rc.verbosity
+
+    @verbosity.setter
+    def verbosity(self, value):
+        if value not in (None, 'quiet', 'verbose', 'debug'):
+            raise ValueError(f"unrecognized value for 'verbosity': {value}")
+        self._rc.verbosity = value
+
+    @property
+    def status_stream(self):
+        return self._rc.status_stream
+
+    @status_stream.setter
+    def status_stream(self, value):
+        if value is not None:
+            if not isinstance(value, io.TextIOBase):
+                raise TypeError("'status_stream' must be a text stream")
+        self._rc.status_stream = value
+
     # TODO: Investigate possible bug when suppress_we=True.
     def initialize(
         self,
         basis_states,
         target_states=None,
         start_states=None,
-        segs_per_state=1,
+        segments_per_state=1,
         suppress_we=False,
     ):
         """Initialize the simulation, taking `segs_per_state` initial states
@@ -264,7 +221,7 @@ class Simulation:
         basis_states : list of BasisState
         target_states : list of TargetState
         start_states : list of BasisState
-        segs_per_state : int, default 1
+        segments_per_state : int, default 1
         suppress_we : bool, default False
 
         """
@@ -283,7 +240,7 @@ class Simulation:
                     basis_states=basis_states,
                     target_states=target_states,
                     start_states=start_states,
-                    segs_per_state=segs_per_state,
+                    segs_per_state=segments_per_state,
                     suppress_we=suppress_we,
                 )
             else:
@@ -299,9 +256,9 @@ class Simulation:
                     self.sim_manager.run(n_iters)
                     self.sim_manager.finalize_run()
                 except KeyboardInterrupt:
-                    self.sim_manager.rc.pstatus('interrupted; shutting down')
+                    self.pstatus('interrupted; shutting down')
                 except Exception as e:
-                    self.sim_manager.rc.pstatus('exception caught; shutting down')
+                    self.pstatus('exception caught; shutting down')
                     if str(e) != '':
                         log.error(f'error message: {e}')
                     log.error(traceback.format_exc())
