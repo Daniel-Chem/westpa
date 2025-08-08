@@ -66,9 +66,9 @@ class Simulation:
     ----------
     we_driver : WEDriver, optional
     propagator : WESTPropagator, optional
-    work_manager : WorkManager, optional
     data_manager : WESTDataManager, optional
     sim_manager : WESimManager, optional
+    work_manager : WorkManager, optional
     max_run_walltime : float, optional
     max_total_iterations : int, optional
     datafile : str, default 'west.h5'
@@ -83,9 +83,9 @@ class Simulation:
         *,
         we_driver=None,
         propagator=None,
-        work_manager=None,
         data_manager=None,
         sim_manager=None,
+        work_manager=None,
         max_run_walltime=None,
         max_total_iterations=None,
         verbosity=None,
@@ -105,20 +105,20 @@ class Simulation:
             try:
                 propagator = rc.get_propagator()
             except ConfigItemMissing:
-                raise ValueError('a propagator must be specified')
+                raise ValueError('no propagator specified')
         # Workaround for wm_ops using global rc:
         westpa.rc._propagator = propagator  # noqa
         # Workaround for executable.pcoord_loader() using global rc:
         if isinstance(westpa.rc.propagator, ExecutablePropagator):
             westpa.rc._system = rc.get_system_driver()  # noqa
 
-        if work_manager is not None:
-            rc.work_manager = work_manager
-
         rc._data_manager = data_manager  # noqa
         rc.data_manager.we_h5filename = datafile
 
         self._sim_manager = sim_manager or rc.get_sim_manager()
+
+        if work_manager is not None:
+            self.work_manager = work_manager
 
         self.max_run_walltime = max_run_walltime
         self.max_total_iterations = max_total_iterations
