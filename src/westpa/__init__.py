@@ -5,7 +5,7 @@ __all__ = [
     'TargetState',
     '_rc',
     'Simulation',
-    'DefaultWEDriver',
+    'WEDriver',
     'NopMapper',
     'FuncBinMapper',
     'PiecewiseBinMapper',
@@ -25,7 +25,8 @@ from .core.systems import WESTSystem
 from .core.states import BasisState, TargetState
 from .core import _rc
 
-from ._api import Simulation, DefaultWEDriver
+from ._api import Simulation
+from .core.we_driver import WEDriver
 from .core.binning import (
     NopMapper,
     FuncBinMapper,
