@@ -1,4 +1,3 @@
-import json
 import logging
 import traceback
 from dataclasses import dataclass
@@ -7,9 +6,8 @@ import numpy as np
 
 import westpa
 from .core.propagators.executable import ExecutablePropagator
-from .core.states import BasisState, TargetState
 from .core.we_driver import WEDriver
-from .core._rc import WESTRC
+from .core._rc import WESTRC  # noqa
 
 log = logging.getLogger(__name__)
 rng = np.random.Generator(np.random.MT19937())
@@ -89,6 +87,8 @@ class DefaultWEDriver(WEDriver):
     smallest_allowed_weight : float default 1e-310
     weight_split_threshold : float, default 2.0
     weight_merge_cutoff : float, default 1.0
+    thresholds : bool, default True
+    adjust_counts : bool, default True
 
     References
     ----------
@@ -146,19 +146,14 @@ class Simulation:
     we_driver : WEDriver, optional
     propagator : WESTPropagator, optional
     work_manager : WorkManager, optional
-    basis_states : list of tuple
-        List of tuples of the form ``(identifier, probability[, auxref])``.
-    start_states : list of tuple, optional
-        List of tuples of the form ``(identifier, probability[, auxref])``.
-    target_states : Mapping[str, ArrayLike]
-        Mapping from target state labels to representative progress coordinates.
-    segments_per_state : int, default 1
-        Number of segments to initialize from each basis or start state.
+    data_manager : WESTDataManager, optional
+    sim_manager : WESimManager, optional
     max_run_walltime : float, optional
     max_total_iterations : int, optional
     datafile : str, default 'west.h5'
-        File for storing simulation data.
+        HDF5 file to create (or overwrite) for storage of simulation data.
     rcfile : str, optional
+        YAML file specifying run configuration options.
 
     """
 
@@ -168,15 +163,12 @@ class Simulation:
         we_driver=None,
         propagator=None,
         work_manager=None,
-        basis_states,
-        start_states=None,
-        target_states=None,
-        segments_per_state=1,
+        data_manager=None,
+        sim_manager=None,
         max_run_walltime=None,
         max_total_iterations=None,
         verbosity=None,
         status_stream=None,
-        data_manager=None,
         datafile='west.h5',
         rcfile=None,
     ):
@@ -200,23 +192,84 @@ class Simulation:
         if work_manager is not None:
             rc.work_manager = work_manager
 
-        if data_manager is not None:
-            rc._data_manager = data_manager  # noqa
+        rc._data_manager = data_manager  # noqa
         rc.data_manager.we_h5filename = datafile
 
-        sim_manager = rc.get_sim_manager()
+        self._sim_manager = sim_manager or rc.get_sim_manager()
+
         if max_run_walltime is not None:
-            sim_manager.max_run_walltime = max_run_walltime
+            self.max_run_walltime = max_run_walltime
         if max_total_iterations is not None:
-            sim_manager.max_total_iterations = max_total_iterations
+            self.max_total_iterations = max_total_iterations
 
-        basis_states = list(map(basis_state_from_tuple, basis_states))
-        start_states = list(map(basis_state_from_tuple, start_states or []))
+    @property
+    def sim_manager(self):
+        return self._sim_manager
 
-        if target_states is None:
-            target_states = []
-        else:
-            target_states = list(map(target_state_from_tuple, target_states.items()))
+    @property
+    def we_driver(self):
+        return self.sim_manager.we_driver
+
+    @property
+    def propagator(self):
+        return westpa.rc.propagator  # TODO: Decouple propagator from global rc.
+
+    @property
+    def work_manager(self):
+        return self.sim_manager.work_manager
+
+    @property
+    def data_manager(self):
+        return self.sim_manager.data_manager
+
+    @property
+    def max_run_walltime(self):
+        return self.sim_manager.max_run_walltime
+
+    @max_run_walltime.setter
+    def max_run_walltime(self, value):
+        if value is not None:
+            value = float(value)
+            if value <= 0:
+                raise ValueError("'max_run_walltime' must be greater than zero")
+        self.sim_manager.max_run_walltime = value
+
+    @property
+    def max_total_iterations(self):
+        return self.sim_manager.max_total_iterations
+
+    @max_total_iterations.setter
+    def max_total_iterations(self, value):
+        if value is not None:
+            if not isinstance(value, int):
+                raise TypeError("'max_total_iterations' must be an integer")
+            if value <= 0:
+                raise ValueError("'max_total_iterations' must be greater than zero")
+        self.sim_manager.max_total_iterations = value
+
+    # TODO: Investigate possible bug when suppress_we=True.
+    def initialize(
+        self,
+        basis_states,
+        target_states=None,
+        start_states=None,
+        segs_per_state=1,
+        suppress_we=False,
+    ):
+        """Initialize the simulation, taking `segs_per_state` initial states
+        from each of the given `basis_states` and `start_states`.
+
+        Parameters
+        ----------
+        basis_states : list of BasisState
+        target_states : list of TargetState
+        start_states : list of BasisState
+        segs_per_state : int, default 1
+        suppress_we : bool, default False
+
+        """
+        target_states = target_states or []
+        start_states = start_states or []
 
         # Scale basis and start state probabilities so they total to one.
         starting_states = basis_states + start_states
@@ -224,64 +277,33 @@ class Simulation:
         for state in starting_states:
             state.probability *= scale_factor
 
-        with sim_manager.work_manager as work_manager:
+        with self.work_manager as work_manager:
             if work_manager.is_master:
-                sim_manager.initialize_simulation(
+                self.sim_manager.initialize_simulation(
                     basis_states=basis_states,
-                    start_states=start_states,
                     target_states=target_states,
-                    segs_per_state=segments_per_state,
+                    start_states=start_states,
+                    segs_per_state=segs_per_state,
+                    suppress_we=suppress_we,
                 )
             else:
                 work_manager.run()
 
-        self._sim_manager = sim_manager
-
     def run(self, n_iters=None):
-        sim_manager = self._sim_manager
-        with sim_manager.work_manager as work_manager:
+        with self.work_manager as work_manager:
             if work_manager.is_master:
                 work_manager.install_sigint_handler()
-                sim_manager.load_plugins()
-                sim_manager.prepare_run()
+                self.sim_manager.load_plugins()
+                self.sim_manager.prepare_run()
                 try:
-                    sim_manager.run(n_iters)
-                    sim_manager.finalize_run()
+                    self.sim_manager.run(n_iters)
+                    self.sim_manager.finalize_run()
                 except KeyboardInterrupt:
-                    sim_manager.rc.pstatus('interrupted; shutting down')
+                    self.sim_manager.rc.pstatus('interrupted; shutting down')
                 except Exception as e:
-                    sim_manager.rc.pstatus('exception caught; shutting down')
+                    self.sim_manager.rc.pstatus('exception caught; shutting down')
                     if str(e) != '':
                         log.error(f'error message: {e}')
                     log.error(traceback.format_exc())
             else:
                 work_manager.run()
-
-
-def basis_state_from_tuple(t):
-    if len(t) == 2:
-        identifier, probability = t
-        auxref = None
-    elif len(t) == 3:
-        identifier, probability, auxref = t
-        if not isinstance(auxref, str):
-            raise TypeError("'auxref' must be a string")
-    else:
-        raise ValueError('tuple must be of the form (identifier, probability[, auxref])')
-
-    try:
-        label = json.dumps(identifier)
-    except TypeError:
-        raise TypeError("'identifier' must be JSON-serializable")
-    probability = float(probability)
-    if not (0 < probability <= 1):
-        raise ValueError("'probability' must be positive and less than or equal to one")
-
-    return BasisState(label, probability, auxref=auxref)
-
-
-def target_state_from_tuple(t):
-    label, pcoord = t
-    if not isinstance(label, str):
-        raise TypeError(f"'label' must be a string, not {type(label).__name__}")
-    return TargetState(label, pcoord)
