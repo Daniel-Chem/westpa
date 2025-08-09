@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import os
 import shutil
@@ -8,7 +9,9 @@ import tempfile
 import time
 import tarfile
 import pickle
-from io import BytesIO
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from io import BytesIO, TextIOBase
 
 import numpy as np
 from numpy.random import MT19937, Generator
@@ -166,7 +169,75 @@ data_loaders = {
 }
 
 
+@dataclass
+class ExternalProgram:
+    """An external program to be executed in a child process.
+
+    Parameters
+    ----------
+    executable : str
+    stdin : TextIOBase, default os.devnull
+    stdout : TextIOBase, optional
+    stderr : TextIOBase, optional
+    cwd : str, optional
+    environ : Mapping[str, str], optional
+    enabled : bool, default True
+
+    """
+
+    executable: str
+    stdin: TextIOBase = os.devnull
+    stdout: TextIOBase = None
+    stderr: TextIOBase = None
+    cwd: str = None
+    environ: Mapping[str, str] = field(default_factory=dict)
+    enabled: bool = True
+
+    def __post_init__(self):
+        self.environ = {k: str(v) for k, v in self.environ.items()}
+
+
+@dataclass
+class DataHandler:
+    """Object that specifies how a dataset should be retrieved.
+
+    Parameters
+    ----------
+    name : str
+    loader : Callable
+    filename : str, optional
+    dir : bool, default False
+    enabled : bool, default True
+
+    """
+
+    name: str
+    loader: Callable
+    filename: str = None
+    dir: bool = False
+    enabled: bool = True
+
+
 class ExecutablePropagator(WESTPropagator):
+    """Propagator that runs dynamics and performs other tasks by spawning
+    child processes.
+
+    Parameters
+    ----------
+    rc : WESTRC, optional
+    segment_ref_template : str, optional
+    basis_state_ref_template : str, optional
+    initial_state_ref_template : str, optional
+    environ : Mapping[str, str], optional
+    propagate : ExternalProgram, optional
+    gen_istate : ExternalProgram, optional
+    get_pcoord : ExternalProgram, optional
+    pre_iteration : ExternalProgram, optional
+    post_iteration : ExternalProgram, optional
+    data_handlers : list of DataHandler, optional
+
+    """
+
     ENV_CURRENT_ITER = 'WEST_CURRENT_ITER'
 
     # Environment variables set during propagation
@@ -191,8 +262,29 @@ class ExecutablePropagator(WESTPropagator):
     ENV_RAND128 = 'WEST_RAND128'
     ENV_RANDFLOAT = 'WEST_RANDFLOAT'
 
-    def __init__(self, rc=None, data_refs=None):
+    def __init__(
+        self,
+        rc=None,
+        *,
+        segment_ref_template=None,
+        basis_state_ref_template=None,
+        initial_state_ref_template=None,
+        environ=None,
+        propagate=None,
+        gen_istate=None,
+        get_pcoord=None,
+        pre_iteration=None,
+        post_iteration=None,
+        data_handlers=None,
+    ):
         super().__init__(rc)
+
+        self.segment_ref_template = None
+        self.basis_state_ref_template = None
+        self.initial_state_ref_template = None
+
+        # Create a persistent RNG for each worker
+        self.rng = Generator(MT19937())
 
         # A mapping of environment variables to template strings which will be
         # added to the environment of all children launched.
@@ -200,24 +292,65 @@ class ExecutablePropagator(WESTPropagator):
 
         # A mapping of executable name ('propagator', 'pre_iteration', 'post_iteration') to
         # a dictionary of attributes like 'executable', 'stdout', 'stderr', 'environ', etc.
-        self.exe_info = {}
-        self.exe_info['propagator'] = {}
-        self.exe_info['pre_iteration'] = {}
-        self.exe_info['post_iteration'] = {}
-        self.exe_info['get_pcoord'] = {}
-        self.exe_info['gen_istate'] = {}
+        self.exe_info = {
+            'propagator': {},
+            'pre_iteration': {},
+            'post_iteration': {},
+            'get_pcoord': {},
+            'gen_istate': {},
+        }
 
-        # A mapping of data set name ('pcoord', 'coord', 'com', etc) to a dictionary of
-        # attributes like 'loader', 'dtype', etc
+        # A mapping of data set name ('pcoord', 'coord', 'com', etc.) to a dictionary of
+        # attributes like 'loader', 'dtype', etc.
         self.data_info = {}
-        self.data_info['pcoord'] = {}
 
-        # Validate configuration
-        config = self.rc.config
+        default_pcoord_handler = DataHandler(name='pcoord', loader=pcoord_loader)
+        self.data_info['pcoord'] = dataclasses.asdict(default_pcoord_handler)
 
-        if data_refs is not None:
-            config['west', 'data', 'data_refs'].update(data_refs)
+        if rc is not None:
+            self._process_config(rc)
 
+        if segment_ref_template is not None:
+            self.segment_ref_template = segment_ref_template
+        elif self.segment_ref_template is None:
+            raise ValueError("'segment_ref_template' must be specified")
+
+        if basis_state_ref_template is not None:
+            self.basis_state_ref_template = basis_state_ref_template
+        elif self.basis_state_ref_template is None:
+            raise ValueError("'basis_state_ref_template' must be specified")
+
+        if initial_state_ref_template is not None:
+            self.initial_state_ref_template = initial_state_ref_template
+        elif self.initial_state_ref_template is None:
+            raise ValueError("'initial_state_ref_template' must be specified")
+
+        if environ is not None:
+            self.addtl_child_environ.update({k: str(v) for k, v in environ.items()})
+
+        for child_type, child_program in {
+            'propagator': propagate,
+            'get_pcoord': get_pcoord,
+            'gen_istate': gen_istate,
+            'pre_iteration': pre_iteration,
+            'post_iteration': post_iteration,
+        }.items():
+            if child_program is not None:
+                self.exe_info[child_type] = dataclasses.asdict(child_program)
+
+        if not self.exe_info['propagator']:
+            raise ValueError("the 'propagate' program must be specified")
+
+        log.debug('exe_info: {!r}'.format(self.exe_info))
+
+        if data_handlers is not None:
+            for handler in data_handlers:
+                self.data_info[handler.name] = dataclasses.asdict(handler)
+
+        log.debug('data_info: {!r}'.format(self.data_info))
+
+    def _process_config(self, rc):
+        config = rc.config
         for key in [
             ('west', 'executable', 'propagator', 'executable'),
             ('west', 'data', 'data_refs', 'segment'),
@@ -230,9 +363,6 @@ class ExecutablePropagator(WESTPropagator):
         self.basis_state_ref_template = config['west', 'data', 'data_refs', 'basis_state']
         self.initial_state_ref_template = config['west', 'data', 'data_refs', 'initial_state']
         store_h5 = config.get(['west', 'data', 'data_refs', 'iteration']) is not None
-
-        # Create a persistent RNG for each worker
-        self.rng = Generator(MT19937())
 
         # Load additional environment variables for all child processes
         self.addtl_child_environ.update({k: str(v) for k, v in (config['west', 'executable', 'environ'] or {}).items()})
@@ -266,7 +396,6 @@ class ExecutablePropagator(WESTPropagator):
         log.debug('exe_info: {!r}'.format(self.exe_info))
 
         # Load configuration items relating to dataset input
-        self.data_info['pcoord'] = {'name': 'pcoord', 'loader': pcoord_loader, 'enabled': True, 'filename': None, 'dir': False}
         self.data_info['trajectory'] = {
             'name': 'trajectory',
             'loader': trajectory_loader,
@@ -284,7 +413,7 @@ class ExecutablePropagator(WESTPropagator):
         self.data_info['log'] = {'name': 'seglog', 'loader': seglog_loader, 'enabled': store_h5, 'filename': None, 'dir': False}
 
         # Grab config from west.executable.datasets, else fallback to west.data.datasets.
-        dataset_configs = config.get(["west", "executable", "datasets"]) or config.get(['west', 'data', 'datasets'], {})
+        dataset_configs = config.get(["west", "executable", "datasets"], config.get(['west', 'data', 'datasets'], {}))
         for dsinfo in dataset_configs:
             try:
                 dsname = dsinfo['name']
@@ -316,6 +445,25 @@ class ExecutablePropagator(WESTPropagator):
             self.data_info.setdefault(dsname, {}).update(dsinfo)
 
         log.debug('data_info: {!r}'.format(self.data_info))
+
+    @property
+    def _child_programs_by_name(self):
+        programs = {}
+        for child_type, child_info in self.exe_info.items():
+            if not child_info:
+                continue
+            name = 'propagate' if child_type == 'propagator' else child_type
+            kwargs = {f.name: child_info[f.name] for f in dataclasses.fields(ExternalProgram) if f.name in child_info}
+            programs[name] = ExternalProgram(**kwargs)
+        return programs
+
+    @property
+    def data_handlers(self):
+        handlers = []
+        for dsinfo in self.data_info.values():
+            kwargs = {f.name: dsinfo[f.name] for f in dataclasses.fields(DataHandler) if f.name in dsinfo}
+            handlers.append(DataHandler(**kwargs))
+        return handlers
 
     @staticmethod
     def makepath(template, template_args=None, expanduser=True, expandvars=True, abspath=False, realpath=False):
@@ -535,7 +683,7 @@ class ExecutablePropagator(WESTPropagator):
             # If the filesystem is NOT properly clean.
             shutil.rmtree(environ[self.ENV_CURRENT_SEG_DATA_REF])
             os.makedirs(environ[self.ENV_CURRENT_SEG_DATA_REF])
-        if self.data_info['restart']['enabled']:
+        if 'restart' in self.data_info and self.data_info['restart']['enabled']:
             restart_writer(environ[self.ENV_CURRENT_SEG_DATA_REF], segment=segment)
 
     def setup_dataset_return(self, segment=None, subset_keys=None):
@@ -720,3 +868,15 @@ class ExecutablePropagator(WESTPropagator):
             segment.walltime = time.time() - starttime
             segment.cputime = rusage.ru_utime
         return segments
+
+    def __repr__(self):
+        kwargs = dict(
+            segment_ref_template=self.segment_ref_template,
+            basis_state_ref_template=self.basis_state_ref_template,
+            initial_state_ref_template=self.initial_state_ref_template,
+            environ=self.addtl_child_environ,
+            **self._child_programs_by_name,
+            data_handlers=self.data_handlers,
+        )
+        kwargs_str = ',\n    '.join(f'{k}={v!r}' for k, v in kwargs.items())
+        return type(self).__name__ + '(\n    ' + kwargs_str + '\n)'

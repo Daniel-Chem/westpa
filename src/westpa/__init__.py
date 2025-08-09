@@ -15,6 +15,9 @@ __all__ = [
     'VoronoiBinMapper',
     'MABBinMapper',
     'BinlessMapper',
+    'ExternalProgram',
+    'DataHandler',
+    'ExecutablePropagator',
     'OpenMMPropagator',
 ]
 
@@ -38,6 +41,8 @@ from .core.binning import (
     MABBinMapper,
     BinlessMapper,
 )
+
+from .core.propagators.executable import ExternalProgram, DataHandler, ExecutablePropagator
 
 try:
     from .core.propagators._openmm import OpenMMPropagator
