@@ -5,7 +5,6 @@ __all__ = [
     'TargetState',
     '_rc',
     'Simulation',
-    'ProgressCoordinate',
     'BinMapper',
     'NopMapper',
     'FuncBinMapper',
@@ -53,7 +52,7 @@ except ImportError:
     pass
 
 from .core import _rc
-from .core.we_driver import ProgressCoordinate, WEDriver
+from .core.we_driver import WEDriver
 from ._api import Simulation
 
 from ._version import get_versions
