@@ -60,7 +60,7 @@ def merge(segments):
 
 class Simulation:
     """The Simulation object provides an interface for initializing and running
-    a WESTPA simulation.
+    a weighted ensemble simulation.
 
     Parameters
     ----------
@@ -111,7 +111,7 @@ class Simulation:
                 raise ValueError('no propagator specified')
         # Workaround for wm_ops using global rc:
         westpa.rc._propagator = propagator  # noqa
-        # Workaround for executable.pcoord_loader() using global rc:
+        # Workaround for executable.pcoord_loader() using global rc.system:
         if isinstance(westpa.rc.propagator, ExecutablePropagator):
             westpa.rc._system = rc.get_system_driver()  # noqa
 

@@ -1,13 +1,14 @@
 import logging
 import math
 import operator
+from dataclasses import dataclass
 
 import numpy as np
 from numpy.random import Generator, MT19937
 
-import westpa
 from .segment import Segment
-from .states import InitialState
+from .states import BasisState, InitialState
+from .systems import WESTSystem
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,39 @@ class NewWeightEntry:
         )
 
 
+@dataclass
+class ProgressCoordinate:
+    ndim: int
+    len: int = 2
+    dtype: np.dtype = np.dtype('float32')
+
+    def __post_init__(self):
+        if not isinstance(self.ndim, int):
+            raise TypeError("'ndim' must be an integer")
+        if self.ndim < 1:
+            raise ValueError("'ndim' must be at least 1")
+
+        if not isinstance(self.len, int):
+            raise TypeError("'len' must be an integer")
+        if self.len < 2:
+            raise ValueError("'len' must be at least 2")
+
+        self.dtype = np.dtype(self.dtype)
+
+    def __call__(self, obj):
+        if isinstance(obj, Segment):
+            return self.compute_for_segment(obj)
+        elif isinstance(obj, (BasisState, InitialState)):
+            return self.compute_for_state(obj)
+        raise TypeError(f"can't compute progress coordinate for object of type {type(obj).__name__}")
+
+    def compute_for_state(self):
+        raise NotImplementedError()
+
+    def compute_for_segment(self):
+        raise NotImplementedError()
+
+
 class WEDriver:
     """A class implementing Huber & Kim's weighted ensemble algorithm [1]_ over Segment objects.
     This class handles all binning, recycling, and preparation of new Segment objects for the
@@ -79,10 +113,13 @@ class WEDriver:
 
     Parameters
     ----------
-    rc : WESTRC, optional
-        Run configuration object.
-    system : WESTSystem, optional
-        Description of the progress coordinate and binning configuration.
+    progress_coordinate : ProgressCoordinate, optional
+        Description of the progress coordinate.
+    bin_mapper : BinMapper, optional
+        Bin mapper for grouping segments into bins.
+    bin_target_counts : int or sequence of int, optional
+        A single target count to apply across all the bins, or a sequence of
+        target counts, one per bin. Required when `bin_mapper` is specified.
     weight_split_threshold : float, default 2.0
         Threshold for splitting, in units of the "ideal weight" (the total
         weight of the bin divided by the target count).
@@ -114,6 +151,10 @@ class WEDriver:
         self,
         rc=None,
         system=None,
+        *,
+        progress_coordinate=None,
+        bin_mapper=None,
+        bin_target_counts=None,
         weight_split_threshold=2.0,
         weight_merge_cutoff=1.0,
         largest_allowed_weight=1.0,
@@ -121,16 +162,6 @@ class WEDriver:
         thresholds=True,
         adjust_counts=True,
     ):
-        self.rc = rc or westpa.rc
-        self.system = system or self.rc.get_system_driver()
-
-        self.weight_split_threshold = weight_split_threshold
-        self.weight_merge_cutoff = weight_merge_cutoff
-        self.largest_allowed_weight = largest_allowed_weight
-        self.smallest_allowed_weight = smallest_allowed_weight
-        self.do_thresholds = thresholds
-        self.do_adjust_counts = adjust_counts
-
         # bin mapper and per-bin target counts (see new_iteration for initialization)
         self.bin_mapper = None
         self.bin_target_counts = None
@@ -166,8 +197,51 @@ class WEDriver:
         self.subgroup_function = _group_walkers_identity
         self.subgroup_function_kwargs = {}
 
-        self.process_config()
+        self.system = None
+
+        if rc is not None:
+            self.rc = rc
+            self.system = rc.get_system_driver()
+            self.process_config()
+
+        if system is not None:
+            self.system = system
+
+        if progress_coordinate is not None:
+            self.system = self.system or WESTSystem()
+            self.system.pcoord_ndim = progress_coordinate.ndim
+            self.system.pcoord_len = progress_coordinate.len
+            self.system.pcoord_dtype = progress_coordinate.dtype
+        if bin_mapper is not None:
+            self.system = self.system or WESTSystem()
+            self._update_bins(bin_mapper, bin_target_counts)
+
+        if self.system is None:
+            raise ValueError("No system defined!")
+
+        self.weight_split_threshold = weight_split_threshold
+        self.weight_merge_cutoff = weight_merge_cutoff
+        self.largest_allowed_weight = largest_allowed_weight
+        self.smallest_allowed_weight = smallest_allowed_weight
+        self.do_thresholds = thresholds
+        self.do_adjust_counts = adjust_counts
+
         self.check_threshold_configs()
+
+    def _update_bins(self, bin_mapper, bin_target_counts):
+        if bin_target_counts is None:
+            raise ValueError("'bin_target_counts' must be specified")
+        if isinstance(bin_target_counts, int):
+            bin_target_counts = np.repeat(bin_target_counts, bin_mapper.nbins)
+        else:
+            bin_target_counts = np.asarray(bin_target_counts, dtype=int)
+            if not len(bin_target_counts) == bin_mapper.nbins:
+                raise ValueError("length of 'bin_target_counts' must equal the number of bins")
+        if (bin_target_counts < 1).any():
+            raise ValueError("'bin_target_counts' must be positive")
+
+        self.system.bin_mapper = bin_mapper
+        self.system.bin_target_counts = bin_target_counts
 
     def process_config(self):
         config = self.rc.config
@@ -263,7 +337,7 @@ class WEDriver:
                 self.smallest_allowed_weight = float(self.smallest_allowed_weight)
             except ValueError:
                 # Generate error saying thresholds are invalid
-                raise ValueError("Invalid weight thresholds specified. Please check your west.cfg.")
+                raise ValueError("Invalid weight thresholds specified.")
 
         if np.isclose(self.largest_allowed_weight, self.smallest_allowed_weight):
             raise ValueError("Weight threshold bounds cannot be identical.")
@@ -949,3 +1023,23 @@ class WEDriver:
                 max_weight=weights[-1],
             )
             log.log(level, log_msg)
+
+    def __repr__(self):
+        bin_target_counts = self.system.bin_target_counts
+        if np.unique(bin_target_counts).size == 1:  # if counts are uniform
+            bin_target_counts = bin_target_counts[0]  # reduce to an integer
+
+        kwargs = dict(
+            progress_coordinate=ProgressCoordinate(self.system.pcoord_ndim, self.system.pcoord_len, self.system.pcoord_dtype),
+            bin_mapper=self.system.bin_mapper,
+            bin_target_counts=bin_target_counts.tolist(),
+            weight_split_threshold=self.weight_split_threshold,
+            weight_merge_cutoff=self.weight_merge_cutoff,
+            largest_allowed_weight=self.largest_allowed_weight,
+            smallest_allowed_weight=self.smallest_allowed_weight,
+            thresholds=self.do_thresholds,
+            adjust_counts=self.do_adjust_counts,
+        )
+        kwargs_str = ',\n    '.join(f'{k}={v!r}' for k, v in kwargs.items())
+
+        return type(self).__name__ + '(\n    ' + kwargs_str + '\n)'

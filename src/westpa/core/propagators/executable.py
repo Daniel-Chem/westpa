@@ -199,15 +199,21 @@ class ExternalProgram:
 
 @dataclass
 class DataHandler:
-    """Object that specifies how a dataset should be retrieved.
+    """A :class:`DataHandler` object specifies how a dataset should be retrieved.
 
     Parameters
     ----------
     name : str
+        Name of the dataset.
     loader : Callable
+        Loader function to use. See ``westpa.data_loaders`` for built-in functions.
     filename : str, optional
+        String with a ``{segment}`` replacement field, indicating a file system
+        location at which to store data for a given segment.
     dir : bool, default False
+        Whether the data is located in a directory (True) or a file (False).
     enabled : bool, default True
+        If False, the dataset `name` will not be loaded.
 
     """
 
@@ -225,16 +231,33 @@ class ExecutablePropagator(WESTPropagator):
     Parameters
     ----------
     rc : WESTRC, optional
+        Run configuration object. If specified, the base configuration for
+        the propagator will be read from `rc`. The remaining (keyword-only)
+        parameters may be used to override the options specified in `rc`.
     segment_ref_template : str, optional
+        String with a ``{segment}`` replacement field, indicating the
+        directory in which to store output files for a given segment.
     basis_state_ref_template : str, optional
+        String with a ``{basis_state}`` replacement field, indicating a
+        file containing data for a given basis state.
     initial_state_ref_template : str, optional
+        String with an ``{initial_state}`` replacement field, indicating a
+        file containing data for a given initial state.
     environ : Mapping[str, str], optional
-    propagate : ExternalProgram, optional
+        Environment variables to make available to external programs run by
+        this propagator.
+    propagator : ExternalProgram, optional
+        Program that runs dynamics for a given segment.
     gen_istate : ExternalProgram, optional
+        Program that generates an initial state from a basis state.
     get_pcoord : ExternalProgram, optional
+        Program that retrieves the progress coordinate for a basis or initial state.
     pre_iteration : ExternalProgram, optional
+        Program to execute at the beginning of each iteration.
     post_iteration : ExternalProgram, optional
+        Program to execute at the end of each iteration.
     data_handlers : list of DataHandler, optional
+        One or more handlers specifying how datasets should be retrieved.
 
     """
 
@@ -270,7 +293,7 @@ class ExecutablePropagator(WESTPropagator):
         basis_state_ref_template=None,
         initial_state_ref_template=None,
         environ=None,
-        propagate=None,
+        propagator=None,
         gen_istate=None,
         get_pcoord=None,
         pre_iteration=None,
@@ -328,18 +351,18 @@ class ExecutablePropagator(WESTPropagator):
         if environ is not None:
             self.addtl_child_environ.update({k: str(v) for k, v in environ.items()})
 
-        for child_type, child_program in {
-            'propagator': propagate,
+        for child_name, child_program in {
+            'propagator': propagator,
             'get_pcoord': get_pcoord,
             'gen_istate': gen_istate,
             'pre_iteration': pre_iteration,
             'post_iteration': post_iteration,
         }.items():
             if child_program is not None:
-                self.exe_info[child_type] = dataclasses.asdict(child_program)
+                self.exe_info[child_name] = dataclasses.asdict(child_program)
 
         if not self.exe_info['propagator']:
-            raise ValueError("the 'propagate' program must be specified")
+            raise ValueError("the 'propagator' program must be specified")
 
         log.debug('exe_info: {!r}'.format(self.exe_info))
 
@@ -368,30 +391,30 @@ class ExecutablePropagator(WESTPropagator):
         self.addtl_child_environ.update({k: str(v) for k, v in (config['west', 'executable', 'environ'] or {}).items()})
 
         # Load configuration items relating to child processes
-        for child_type in ('propagator', 'pre_iteration', 'post_iteration', 'get_pcoord', 'gen_istate', 'subgroup_walkers'):
-            child_info = config.get(['west', 'executable', child_type])
+        for child_name in ('propagator', 'pre_iteration', 'post_iteration', 'get_pcoord', 'gen_istate', 'subgroup_walkers'):
+            child_info = config.get(['west', 'executable', child_name])
             if not child_info:
                 continue
 
-            info_prefix = ['west', 'executable', child_type]
+            info_prefix = ['west', 'executable', child_name]
 
             # require executable to be specified if anything is specified at all
             config.require(info_prefix + ['executable'])
 
-            self.exe_info[child_type]['executable'] = child_info['executable']
-            self.exe_info[child_type]['stdin'] = child_info.get('stdin', os.devnull)
-            self.exe_info[child_type]['stdout'] = child_info.get('stdout', None)
-            self.exe_info[child_type]['stderr'] = child_info.get('stderr', None)
-            self.exe_info[child_type]['cwd'] = child_info.get('cwd', None)
+            self.exe_info[child_name]['executable'] = child_info['executable']
+            self.exe_info[child_name]['stdin'] = child_info.get('stdin', os.devnull)
+            self.exe_info[child_name]['stdout'] = child_info.get('stdout', None)
+            self.exe_info[child_name]['stderr'] = child_info.get('stderr', None)
+            self.exe_info[child_name]['cwd'] = child_info.get('cwd', None)
 
-            if child_type not in ('propagator', 'get_pcoord', 'gen_istate'):
-                self.exe_info[child_type]['enabled'] = child_info.get('enabled', True)
+            if child_name not in ('propagator', 'get_pcoord', 'gen_istate'):
+                self.exe_info[child_name]['enabled'] = child_info.get('enabled', True)
             else:
                 # for consistency, propagator, get_pcoord, and gen_istate can never be disabled
-                self.exe_info[child_type]['enabled'] = True
+                self.exe_info[child_name]['enabled'] = True
 
             # apply environment modifications specific to this executable
-            self.exe_info[child_type]['environ'] = {k: str(v) for k, v in (child_info.get('environ') or {}).items()}
+            self.exe_info[child_name]['environ'] = {k: str(v) for k, v in (child_info.get('environ') or {}).items()}
 
         log.debug('exe_info: {!r}'.format(self.exe_info))
 
@@ -449,12 +472,11 @@ class ExecutablePropagator(WESTPropagator):
     @property
     def _child_programs_by_name(self):
         programs = {}
-        for child_type, child_info in self.exe_info.items():
+        for child_name, child_info in self.exe_info.items():
             if not child_info:
                 continue
-            name = 'propagate' if child_type == 'propagator' else child_type
             kwargs = {f.name: child_info[f.name] for f in dataclasses.fields(ExternalProgram) if f.name in child_info}
-            programs[name] = ExternalProgram(**kwargs)
+            programs[child_name] = ExternalProgram(**kwargs)
         return programs
 
     @property
@@ -874,9 +896,9 @@ class ExecutablePropagator(WESTPropagator):
             segment_ref_template=self.segment_ref_template,
             basis_state_ref_template=self.basis_state_ref_template,
             initial_state_ref_template=self.initial_state_ref_template,
-            environ=self.addtl_child_environ,
-            **self._child_programs_by_name,
-            data_handlers=self.data_handlers,
         )
+        if self.addtl_child_environ:
+            kwargs['environ'] = self.addtl_child_environ
+        kwargs.update(**self._child_programs_by_name, data_handlers=self.data_handlers)
         kwargs_str = ',\n    '.join(f'{k}={v!r}' for k, v in kwargs.items())
         return type(self).__name__ + '(\n    ' + kwargs_str + '\n)'

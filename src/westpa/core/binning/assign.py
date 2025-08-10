@@ -134,10 +134,12 @@ class RectilinearBinMapper(BinMapper):
         self._boundaries = []
         self.labels = []
         for boundset in boundaries:
-            boundarray = np.ascontiguousarray(boundset, dtype=coord_dtype)
+            boundarray = np.asarray(boundset, dtype=coord_dtype)
+            if not boundarray.ndim == 1:
+                raise ValueError("items in 'boundaries' must be 1-D arrays")
             db = np.diff(boundarray)
             if (db <= 0).any():
-                raise ValueError('boundary set must be strictly monotonically increasing')
+                raise ValueError('bin boundaries must be monotonically increasing along each dimension')
             self._boundaries.append(boundarray)
         self._boundlens = np.array([len(boundset) for boundset in self._boundaries], dtype=index_dtype)
         self.ndim = len(self._boundaries)

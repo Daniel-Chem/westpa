@@ -5,7 +5,8 @@ __all__ = [
     'TargetState',
     '_rc',
     'Simulation',
-    'WEDriver',
+    'ProgressCoordinate',
+    'BinMapper',
     'NopMapper',
     'FuncBinMapper',
     'PiecewiseBinMapper',
@@ -15,21 +16,16 @@ __all__ = [
     'VoronoiBinMapper',
     'MABBinMapper',
     'BinlessMapper',
+    'WEDriver',
+    'ExecutablePropagator',
     'ExternalProgram',
     'DataHandler',
-    'ExecutablePropagator',
+    'data_loaders',
     'OpenMMPropagator',
 ]
 
-from ._version import get_versions
-
 from .core.segment import Segment
-from .core.systems import WESTSystem
 from .core.states import BasisState, TargetState
-from .core import _rc
-
-from ._api import Simulation
-from .core.we_driver import WEDriver
 from .core.binning import (
     NopMapper,
     FuncBinMapper,
@@ -41,13 +37,26 @@ from .core.binning import (
     MABBinMapper,
     BinlessMapper,
 )
+from .core.binning.assign import BinMapper
+from .core.systems import WESTSystem
 
-from .core.propagators.executable import ExternalProgram, DataHandler, ExecutablePropagator
+from .core.propagators.executable import (
+    ExternalProgram,
+    DataHandler,
+    ExecutablePropagator,
+    data_loaders,
+)
 
 try:
     from .core.propagators._openmm import OpenMMPropagator
 except ImportError:
     pass
+
+from .core import _rc
+from .core.we_driver import ProgressCoordinate, WEDriver
+from ._api import Simulation
+
+from ._version import get_versions
 
 
 rc = _rc.WESTRC()
