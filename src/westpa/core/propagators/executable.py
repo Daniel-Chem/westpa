@@ -225,7 +225,7 @@ class DataHandler:
 
 
 class ExecutablePropagator(WESTPropagator):
-    """Propagator that runs dynamics by executing an external program.
+    """Propagator that runs dynamics and performs other tasks by executing external programs.
 
     Parameters
     ----------
