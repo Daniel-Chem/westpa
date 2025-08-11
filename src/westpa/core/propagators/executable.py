@@ -233,18 +233,6 @@ class ExecutablePropagator(WESTPropagator):
         Run configuration object. If specified, the base configuration for
         the propagator will be read from `rc`. The remaining (keyword-only)
         parameters may be used to override the options specified in `rc`.
-    segment_ref_template : str, optional
-        String with a ``{segment}`` replacement field, indicating the
-        directory in which to store output files for a given segment.
-    basis_state_ref_template : str, optional
-        String with a ``{basis_state}`` replacement field, indicating a
-        file containing data for a given basis state.
-    initial_state_ref_template : str, optional
-        String with an ``{initial_state}`` replacement field, indicating a
-        file containing data for a given initial state.
-    environ : Mapping[str, str], optional
-        Environment variables to make available to external programs run by
-        this propagator.
     propagator : ExternalProgram, optional
         Program that runs dynamics for a given segment.
     gen_istate : ExternalProgram, optional
@@ -255,6 +243,18 @@ class ExecutablePropagator(WESTPropagator):
         Program to execute at the beginning of each iteration.
     post_iteration : ExternalProgram, optional
         Program to execute at the end of each iteration.
+    environ : Mapping[str, str], optional
+        Environment variables to make available to all external programs run by
+        this propagator.
+    segment_ref_template : str, optional
+        String with a ``{segment}`` replacement field, indicating the
+        directory in which to store output files for a given segment.
+    basis_state_ref_template : str, optional
+        String with a ``{basis_state}`` replacement field, indicating a
+        file containing data for a given basis state.
+    initial_state_ref_template : str, optional
+        String with an ``{initial_state}`` replacement field, indicating a
+        file containing data for a given initial state.
     data_handlers : list of DataHandler, optional
         One or more handlers specifying how datasets should be retrieved.
 
@@ -288,15 +288,15 @@ class ExecutablePropagator(WESTPropagator):
         self,
         rc=None,
         *,
-        segment_ref_template=None,
-        basis_state_ref_template=None,
-        initial_state_ref_template=None,
-        environ=None,
         propagator=None,
         gen_istate=None,
         get_pcoord=None,
         pre_iteration=None,
         post_iteration=None,
+        environ=None,
+        segment_ref_template=None,
+        basis_state_ref_template=None,
+        initial_state_ref_template=None,
         data_handlers=None,
     ):
         super().__init__(rc)
@@ -891,13 +891,5 @@ class ExecutablePropagator(WESTPropagator):
         return segments
 
     def __repr__(self):
-        kwargs = dict(
-            segment_ref_template=self.segment_ref_template,
-            basis_state_ref_template=self.basis_state_ref_template,
-            initial_state_ref_template=self.initial_state_ref_template,
-        )
-        if self.addtl_child_environ:
-            kwargs['environ'] = self.addtl_child_environ
-        kwargs.update(**self._child_programs_by_name, data_handlers=self.data_handlers)
-        kwargs_str = ',\n    '.join(f'{k}={v!r}' for k, v in kwargs.items())
-        return type(self).__name__ + '(\n    ' + kwargs_str + '\n)'
+        executables = ', '.join(f"{k}={v['executable']}" for k, v in self.exe_info.items() if v)
+        return f'<{type(self).__name__} at {hex(id(self))} with {executables}>'

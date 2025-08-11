@@ -994,20 +994,9 @@ class WEDriver:
         bin_target_counts = self.system.bin_target_counts
         if np.unique(bin_target_counts).size == 1:  # if counts are all the same
             bin_target_counts = bin_target_counts[0]  # reduce to an integer
-
-        kwargs = dict(
-            pcoord_ndim=self.system.pcoord_ndim,
-            pcoord_len=self.system.pcoord_len,
-            pcoord_dtype=self.system.pcoord_dtype,
+        options = dict(
             bin_mapper=self.system.bin_mapper,
             bin_target_counts=bin_target_counts.tolist(),
-            weight_split_threshold=self.weight_split_threshold,
-            weight_merge_cutoff=self.weight_merge_cutoff,
-            largest_allowed_weight=self.largest_allowed_weight,
-            smallest_allowed_weight=self.smallest_allowed_weight,
-            thresholds=self.do_thresholds,
-            adjust_counts=self.do_adjust_counts,
         )
-        kwargs_str = '\n    '.join(f'{k}: {v}' for k, v in kwargs.items())
-
-        return '<' + type(self).__name__ + ' with\n    ' + kwargs_str + f'\nat {hex(id(self))}>'
+        options_str = ', '.join(f'{k}={v!r}' for k, v in options.items())
+        return f'<{type(self).__name__} at {hex(id(self))} with {options_str}>'

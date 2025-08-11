@@ -256,38 +256,40 @@ class WESTDataManager:
             if self.dataset_options['pcoord']['h5path'] != 'pcoord':
                 raise ValueError('cannot override pcoord storage location')
 
-    def __init__(self, rc=None):
-        self.rc = rc or westpa.rc
+    def __init__(
+        self,
+        rc=None,
+        *,
+        system=None,
+        we_h5filename='west.h5',
+        we_h5file_driver=None,
+        iter_prec=8,
+        aux_compression_threshold=1048576,
+        flush_period=60,
+        iter_h5file_ref_template=None,
+    ):
+        self.dataset_options = {}
 
-        self.we_h5filename = self.default_we_h5filename
-        self.we_h5file_driver = self.default_we_h5file_driver
+        if rc is not None:
+            self.rc = rc
+            self.system = rc.get_system_driver()
+            self.process_config()
+        else:
+            self.system = system
+            self.we_h5filename = we_h5filename
+            self.we_h5file_driver = we_h5file_driver
+            self.iter_prec = iter_prec
+            self.aux_compression_threshold = aux_compression_threshold
+            self.flush_period = flush_period
+            self.iter_ref_h5_template = iter_h5file_ref_template
+            self.store_h5 = iter_h5file_ref_template is not None
+
         self.we_h5file_version = None
         self.h5_access_mode = 'r+'
-        self.iter_prec = self.default_iter_prec
-        self.aux_compression_threshold = self.default_aux_compression_threshold
-
         self.we_h5file = None
 
         self.lock = threading.RLock()
-        self.flush_period = None
         self.last_flush = 0
-
-        self._system = None
-        self.iter_ref_h5_template = None
-        self.store_h5 = False
-
-        self.dataset_options = {}
-        self.process_config()
-
-    @property
-    def system(self):
-        if self._system is None:
-            self._system = self.rc.get_system_driver()
-        return self._system
-
-    @system.setter
-    def system(self, system):
-        self._system = system
 
     @property
     def closed(self):

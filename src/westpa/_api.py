@@ -1,14 +1,17 @@
 import io
 import logging
+import os
 import traceback
 
 import numpy as np
 
 import westpa
+from .core.data_manager import WESTDataManager
 from .core.propagators.executable import ExecutablePropagator
-from .core.yamlcfg import ConfigItemMissing
+from .core.sim_manager import WESimManager
 from .core._rc import WESTRC  # noqa
-from .work_managers import WorkManager
+from .work_managers import SerialWorkManager
+from .work_managers.core import WorkManager
 
 log = logging.getLogger(__name__)
 rng = np.random.Generator(np.random.MT19937())
@@ -59,74 +62,90 @@ def merge(segments):
 
 
 class Simulation:
-    """The Simulation object provides an interface for initializing and running
-    a weighted ensemble simulation.
+    """The Simulation object provides an interface for running a WESTPA simulation.
 
     Parameters
     ----------
-    we_driver : WEDriver, optional
-        Driver for resampling and recycling trajectories.
-    propagator : WESTPropagator, optional
-    data_manager : WESTDataManager, optional
-    sim_manager : WESimManager, optional
+    we_driver : WEDriver
+        Driver for resampling and recycling trajectory segments.
+    propagator : WESTPropagator
+        Propagator for running dynamics.
     work_manager : WorkManager, optional
-    max_run_walltime : float, optional
-    max_total_iterations : int, optional
-    verbosity : {'quiet', 'verbose', 'debug'}, optional
-    status_stream : io.TextIOBase, optional
+        Work manager for launching tasks. Defaults to ``SerialWorkManager()``.
     datafile : str, default 'west.h5'
-        HDF5 file to create (or overwrite) for storage of simulation data.
-    rcfile : str, optional
-        YAML file specifying run configuration options.
+        Pathname of the HDF5 file to create for storing simulation data.
+    max_total_iterations : int, optional
+        Maximum number of iterations for the run.
+    max_run_walltime : float, optional
+        Maximum elapsed real time for the run.
+    status_stream : io.TextIOBase, optional
+        Stream to print status updates to. Defaults to ``stdout``.
+    verbosity : {'quiet', 'verbose', 'debug', None}, optional
+        Verbosity level of status output.
 
     """
 
     def __init__(
         self,
         *,
-        we_driver=None,
-        propagator=None,
-        data_manager=None,
-        sim_manager=None,
+        we_driver,
+        propagator,
         work_manager=None,
-        max_run_walltime=None,
-        max_total_iterations=None,
-        verbosity=None,
-        status_stream=None,
         datafile='west.h5',
-        rcfile=None,
+        max_total_iterations=None,
+        max_run_walltime=None,
+        generate_initial_states=False,
+        propagator_block_size=1,
+        status_stream=None,
+        verbosity=None,
     ):
-        rc = WESTRC()
-        if rcfile is not None:
-            rc.config.update_from_file(rcfile)
+        self._datafile = os.path.abspath(datafile)
+        self._sim_manager = WESimManager(
+            we_driver=we_driver,
+            work_manager=work_manager or SerialWorkManager(),
+            data_manager=WESTDataManager(system=we_driver.system, we_h5filename=self._datafile),
+            gen_istates=generate_initial_states,
+        )
 
-        if we_driver is not None:
-            rc._we_driver = we_driver  # noqa
-            rc._system = we_driver.system  # noqa
-
-        if propagator is None:
-            try:
-                propagator = rc.get_propagator()
-            except ConfigItemMissing:
-                raise ValueError('no propagator specified')
-        # Workaround for wm_ops using global rc:
+        # workaround for wm_ops using the global rc
         westpa.rc._propagator = propagator  # noqa
-        # Workaround for executable.pcoord_loader() using global rc.system:
-        if isinstance(westpa.rc.propagator, ExecutablePropagator):
-            westpa.rc._system = rc.get_system_driver()  # noqa
-
-        rc._data_manager = data_manager  # noqa
-        rc.data_manager.we_h5filename = datafile
-
-        self._sim_manager = sim_manager or rc.get_sim_manager()
-
-        if work_manager is not None:
-            self.work_manager = work_manager
+        # workaround for executable.pcoord_loader() using the global rc.system
+        if isinstance(propagator, ExecutablePropagator):
+            westpa.rc._system = we_driver.system  # noqa
 
         self.max_run_walltime = max_run_walltime
         self.max_total_iterations = max_total_iterations
-        self.verbosity = verbosity
+        self.propagator_block_size = propagator_block_size
         self.status_stream = status_stream
+        self.verbosity = verbosity
+
+    @classmethod
+    def from_rcfile(cls, rcfile):
+        """Construct a simulation from a run configuration file.
+
+        Parameters
+        ----------
+        rcfile : str
+            YAML file specifying run configuration options (e.g., 'west.cfg').
+
+        Returns
+        -------
+        Simulation
+            Simulation constructed using the options in `rcfile`.
+
+        """
+        rc = WESTRC()
+        rc.read_config(rcfile)
+        return cls(
+            we_driver=rc.we_driver,
+            propagator=rc.propagator,
+            work_manager=rc.work_manager,
+            max_total_iterations=rc.sim_manager.max_total_iterations,
+            max_run_walltime=rc.sim_manager.max_run_walltime,
+            status_stream=rc.status_stream,
+            verbosity=rc.verbosity,
+            datafile=rc.data_manager.we_h5filename,
+        )
 
     @property
     def sim_manager(self):
@@ -139,6 +158,16 @@ class Simulation:
     @property
     def data_manager(self):
         return self.sim_manager.data_manager
+
+    @property
+    def datafile(self):
+        return self._datafile
+
+    @datafile.setter
+    def datafile(self, value):
+        if self.data_manager.we_h5file is not None:
+            raise ValueError(f"can't set 'datafile': already created file {self._datafile}")
+        self._datafile = os.path.abspath(value)
 
     def pstatus(self, *args, **kwargs):
         self._rc.pstatus(*args, **kwargs)
@@ -162,6 +191,17 @@ class Simulation:
         self.sim_manager.work_manager = value
 
     @property
+    def propagator_block_size(self):
+        return self.sim_manager.propagator_block_size
+
+    @propagator_block_size.setter
+    def propagator_block_size(self, value):
+        value = int(value)
+        if value < 1:
+            raise ValueError("'propagator_block_size' must be at least 1")
+        self.sim_manager.propagator_block_size = value
+
+    @property
     def max_run_walltime(self):
         return self.sim_manager.max_run_walltime
 
@@ -170,7 +210,7 @@ class Simulation:
         if value is not None:
             value = float(value)
             if value <= 0:
-                raise ValueError("'max_run_walltime' must be greater than zero")
+                raise ValueError("'max_run_walltime' must be positive")
         self.sim_manager.max_run_walltime = value
 
     @property
@@ -183,7 +223,7 @@ class Simulation:
             if not isinstance(value, int):
                 raise TypeError("'max_total_iterations' must be an integer")
             if value <= 0:
-                raise ValueError("'max_total_iterations' must be greater than zero")
+                raise ValueError("'max_total_iterations' must be at least 1")
         self.sim_manager.max_total_iterations = value
 
     @property
@@ -215,8 +255,9 @@ class Simulation:
         start_states=None,
         segments_per_state=1,
         suppress_we=False,
+        overwrite=False,
     ):
-        """Initialize the simulation, taking `segs_per_state` initial states
+        """Initialize the simulation, taking `segments_per_state` initial states
         from each of the given `basis_states` and `start_states`.
 
         Parameters
@@ -226,6 +267,7 @@ class Simulation:
         start_states : list of BasisState
         segments_per_state : int, default 1
         suppress_we : bool, default False
+        overwrite : bool, default False
 
         """
         target_states = target_states or []
@@ -236,6 +278,9 @@ class Simulation:
         scale_factor = 1 / sum(state.probability for state in starting_states)
         for state in starting_states:
             state.probability *= scale_factor
+
+        if not overwrite and os.path.exists(self.data_manager.we_h5filename):
+            raise ValueError(f"can't initialize the simulation: " f'file {self.data_manager.we_h5filename!r} already exists')
 
         with self.work_manager as work_manager:
             if work_manager.is_master:
