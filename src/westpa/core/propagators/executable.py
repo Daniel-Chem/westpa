@@ -194,6 +194,7 @@ class ExternalProgram:
     enabled: bool = True
 
     def __post_init__(self):
+        self.executable = os.path.abspath(self.executable)
         self.environ = {k: str(v) for k, v in self.environ.items()}
 
 
@@ -222,6 +223,10 @@ class DataHandler:
     filename: str = None
     dir: bool = False
     enabled: bool = True
+
+    def __post_init__(self):
+        if self.filename is not None:
+            self.filename = os.path.abspath(self.filename)
 
 
 class ExecutablePropagator(WESTPropagator):
@@ -333,17 +338,17 @@ class ExecutablePropagator(WESTPropagator):
             self._process_config(rc)
 
         if segment_ref_template is not None:
-            self.segment_ref_template = segment_ref_template
+            self.segment_ref_template = os.path.abspath(segment_ref_template)
         elif self.segment_ref_template is None:
             raise ValueError("'segment_ref_template' must be specified")
 
         if basis_state_ref_template is not None:
-            self.basis_state_ref_template = basis_state_ref_template
+            self.basis_state_ref_template = os.path.abspath(basis_state_ref_template)
         elif self.basis_state_ref_template is None:
             raise ValueError("'basis_state_ref_template' must be specified")
 
         if initial_state_ref_template is not None:
-            self.initial_state_ref_template = initial_state_ref_template
+            self.initial_state_ref_template = os.path.abspath(initial_state_ref_template)
         elif self.initial_state_ref_template is None:
             raise ValueError("'initial_state_ref_template' must be specified")
 
