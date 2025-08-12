@@ -280,7 +280,7 @@ class Simulation:
             state.probability *= scale_factor
 
         if not overwrite and os.path.exists(self.data_manager.we_h5filename):
-            raise ValueError(f"can't initialize the simulation: file {self.data_manager.we_h5filename!r} already exists")
+            raise ValueError(f"can't initialize the simulation: " f'file {self.data_manager.we_h5filename!r} already exists')
 
         with self.work_manager as work_manager:
             if work_manager.is_master:
@@ -295,13 +295,6 @@ class Simulation:
                 work_manager.run()
 
     def run(self, n_iters=None):
-        """Run the simulation.
-
-        Parameters
-        ----------
-        n_iters : int, optional
-
-        """
         with self.work_manager as work_manager:
             if work_manager.is_master:
                 work_manager.install_sigint_handler()
