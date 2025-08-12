@@ -295,6 +295,15 @@ class Simulation:
                 work_manager.run()
 
     def run(self, n_iters=None):
+        """Run the simulation.
+
+        Parameters
+        ----------
+        n_iters : int, optional
+            Number of iterations to run. If not provided, the simulation will be
+            run until :attr:`max_total_iterations` or :attr:`max_run_walltime`.
+
+        """
         with self.work_manager as work_manager:
             if work_manager.is_master:
                 work_manager.install_sigint_handler()
