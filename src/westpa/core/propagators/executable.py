@@ -227,8 +227,9 @@ class DataHandler:
     enabled: bool = True
 
 
+# TODO: Can we pass environ={'WEST_SIM_ROOT': os.getcwd()} instead of exporting to os.environ?
 class ExecutablePropagator(WESTPropagator):
-    """Propagator that runs dynamics and performs other tasks by executing external programs.
+    """Propagator that runs dynamics and performs other tasks by running external programs.
 
     Parameters
     ----------
@@ -247,8 +248,8 @@ class ExecutablePropagator(WESTPropagator):
     post_iteration : Executable, optional
         Program to execute at the end of each iteration.
     environ : Mapping[str, str], optional
-        Environment variables to make available to all external programs run by
-        this propagator.
+        Environment variables to make available to the external programs run by
+        the propagator.
     segment_ref_template : str, optional
         String with a ``{segment}`` replacement field, indicating the
         directory in which to store output files for a given segment.

@@ -59,7 +59,7 @@ class NewWeightEntry:
 
 
 class WEDriver:
-    """A class implementing Huber & Kim's weighted ensemble algorithm [1]_ over Segment objects.
+    """Resampler that implements the weighted ensemble algorithm of Huber & Kim. [1]_
 
     Parameters
     ----------
@@ -72,7 +72,7 @@ class WEDriver:
     bin_mapper : BinMapper, optional
         Bin mapper for grouping segments into bins. Defaults to no binning.
     bin_target_counts : int or sequence of int, optional
-        A single target count to apply across all the bins, or a sequence of
+        A single target count to use for all the bins, or a sequence of
         target counts, one per bin. This parameter is required when `bin_mapper`
         is specified (and ignored if it is not specified).
     weight_split_threshold : float, default 2.0
@@ -90,31 +90,28 @@ class WEDriver:
     adjust_counts : bool, default True
         Whether to adjust counts to exactly match target counts.
 
-    Notes
-    -----
-    This class handles all binning, recycling, and preparation of new Segment objects for the
-    next iteration. Binning is accomplished using system.bin_mapper, and per-bin target counts
-    are from system.bin_target_counts.
-
-    The workflow is as follows:
-
-      1) Call `new_iteration()` every new iteration, providing any recycling targets that are
-         in force and any available initial states for recycling.
-      2) Call `assign()` to assign segments to bins based on their initial and end points. This
-         returns the number of walkers that were recycled.
-      3) Call `run_we()`, optionally providing a set of initial states that will be used to
-         recycle walkers.
-
-    Note the presence of flux_matrix, transition_matrix,
-    current_iter_segments, next_iter_segments, recycling_segments,
-    initial_binning, final_binning, next_iter_binning, and new_weights (to be documented soon).
-
     References
     ----------
-    .. [1] G.A. Huber, S. Kim, Biophysical Journal, Volume 70, Issue 1, 1996,
-    Pages 97-110, ISSN 0006-3495, https://doi.org/10.1016/S0006-3495(96)79552-8.
+    .. [1] G.A. Huber, S. Kim, Biophysical Journal, Volume 70, Issue 1, 1996, Pages 97-110, ISSN 0006-3495, https://doi.org/10.1016/S0006-3495(96)79552-8.
 
     """
+
+    # This class handles all binning, recycling, and preparation of new Segment objects for the
+    # next iteration. Binning is accomplished using system.bin_mapper, and per-bin target counts
+    # are from system.bin_target_counts.
+    #
+    # The workflow is as follows:
+    #
+    #   1) Call `new_iteration()` every new iteration, providing any recycling targets that are
+    #      in force and any available initial states for recycling.
+    #   2) Call `assign()` to assign segments to bins based on their initial and end points. This
+    #      returns the number of walkers that were recycled.
+    #   3) Call `run_we()`, optionally providing a set of initial states that will be used to
+    #      recycle walkers.
+    #
+    # Note the presence of flux_matrix, transition_matrix,
+    # current_iter_segments, next_iter_segments, recycling_segments,
+    # initial_binning, final_binning, next_iter_binning, and new_weights (to be documented soon).
 
     weight_split_threshold = 2.0
     weight_merge_cutoff = 1.0
