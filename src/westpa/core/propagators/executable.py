@@ -170,8 +170,11 @@ data_loaders = {
 
 
 @dataclass
-class ExternalProgram:
-    """An external program to be executed in a child process.
+class Executable:
+    """An external program to be run in a subprocess.
+
+    This data class corresponds to the JSON type of the values in the
+    ``('west', 'executable')`` section of a run configuration file.
 
     Parameters
     ----------
@@ -233,15 +236,15 @@ class ExecutablePropagator(WESTPropagator):
         Run configuration object. If specified, the base configuration for
         the propagator will be read from `rc`. The remaining (keyword-only)
         parameters may be used to override the options specified in `rc`.
-    propagator : ExternalProgram, optional
+    propagator : Executable, optional
         Program that runs dynamics for a given segment.
-    gen_istate : ExternalProgram, optional
+    gen_istate : Executable, optional
         Program that generates an initial state from a basis state.
-    get_pcoord : ExternalProgram, optional
+    get_pcoord : Executable, optional
         Program that retrieves the progress coordinate for a basis or initial state.
-    pre_iteration : ExternalProgram, optional
+    pre_iteration : Executable, optional
         Program to execute at the beginning of each iteration.
-    post_iteration : ExternalProgram, optional
+    post_iteration : Executable, optional
         Program to execute at the end of each iteration.
     environ : Mapping[str, str], optional
         Environment variables to make available to all external programs run by
@@ -350,15 +353,15 @@ class ExecutablePropagator(WESTPropagator):
         if environ is not None:
             self.addtl_child_environ.update({k: str(v) for k, v in environ.items()})
 
-        for child_name, child_program in {
+        for child_name, executable in {
             'propagator': propagator,
             'get_pcoord': get_pcoord,
             'gen_istate': gen_istate,
             'pre_iteration': pre_iteration,
             'post_iteration': post_iteration,
         }.items():
-            if child_program is not None:
-                self.exe_info[child_name] = dataclasses.asdict(child_program)
+            if executable is not None:
+                self.exe_info[child_name] = dataclasses.asdict(executable)
 
         if not self.exe_info['propagator']:
             raise ValueError("the 'propagator' program must be specified")
@@ -467,16 +470,6 @@ class ExecutablePropagator(WESTPropagator):
             self.data_info.setdefault(dsname, {}).update(dsinfo)
 
         log.debug('data_info: {!r}'.format(self.data_info))
-
-    @property
-    def _child_programs_by_name(self):
-        programs = {}
-        for child_name, child_info in self.exe_info.items():
-            if not child_info:
-                continue
-            kwargs = {f.name: child_info[f.name] for f in dataclasses.fields(ExternalProgram) if f.name in child_info}
-            programs[child_name] = ExternalProgram(**kwargs)
-        return programs
 
     @property
     def data_handlers(self):

@@ -17,7 +17,7 @@ __all__ = [
     'BinlessMapper',
     'WEDriver',
     'ExecutablePropagator',
-    'ExternalProgram',
+    'Executable',
     'DataHandler',
     'data_loaders',
     'OpenMMPropagator',
@@ -40,9 +40,9 @@ from .core.binning.assign import BinMapper
 from .core.systems import WESTSystem
 
 from .core.propagators.executable import (
-    ExternalProgram,
-    DataHandler,
     ExecutablePropagator,
+    Executable,
+    DataHandler,
     data_loaders,
 )
 
