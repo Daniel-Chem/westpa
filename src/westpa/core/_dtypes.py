@@ -15,3 +15,5 @@ seg_initpoint_dtype = np.uint8
 seg_endpoint_dtype = np.uint8
 istate_type_dtype = np.uint8
 istate_status_dtype = np.uint8
+
+# TODO: Move remaining dtypes here. Export dtypes to package level.
