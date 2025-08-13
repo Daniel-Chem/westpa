@@ -11,7 +11,7 @@ import tarfile
 import pickle
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from io import BytesIO, TextIOBase
+from io import BytesIO
 
 import numpy as np
 from numpy.random import MT19937, Generator
@@ -179,9 +179,9 @@ class Executable:
     Parameters
     ----------
     executable : str
-    stdin : TextIOBase, default os.devnull
-    stdout : TextIOBase, optional
-    stderr : TextIOBase, optional
+    stdin : str, default os.devnull
+    stdout : str, optional
+    stderr : str, optional
     cwd : str, optional
     environ : Mapping[str, str], optional
     enabled : bool, default True
@@ -189,9 +189,9 @@ class Executable:
     """
 
     executable: str
-    stdin: TextIOBase = os.devnull
-    stdout: TextIOBase = None
-    stderr: TextIOBase = None
+    stdin: str = os.devnull
+    stdout: str = None
+    stderr: str = None
     cwd: str = None
     environ: Mapping[str, str] = field(default_factory=dict)
     enabled: bool = True
@@ -233,11 +233,16 @@ class ExecutablePropagator(WESTPropagator):
 
     Parameters
     ----------
-    rc : WESTRC, optional
-        Run configuration object. If specified, the base configuration for
-        the propagator will be read from `rc`. The remaining (keyword-only)
-        parameters may be used to override the options specified in `rc`.
-    propagator : Executable, optional
+    segment_ref_template : str
+        String with a ``{segment}`` replacement field, indicating the
+        directory in which to store output files for a given segment.
+    basis_state_ref_template : str
+        String with a ``{basis_state}`` replacement field, indicating a
+        file containing coordinate data for a given basis state.
+    initial_state_ref_template : str
+        String with an ``{initial_state}`` replacement field, indicating a
+        file containing coordinate data for a given initial state.
+    propagator : Executable
         Program that runs dynamics for a given segment.
     gen_istate : Executable, optional
         Program that generates an initial state from a basis state.
@@ -250,15 +255,6 @@ class ExecutablePropagator(WESTPropagator):
     environ : Mapping[str, str], optional
         Environment variables to make available to the external programs run by
         the propagator.
-    segment_ref_template : str, optional
-        String with a ``{segment}`` replacement field, indicating the
-        directory in which to store output files for a given segment.
-    basis_state_ref_template : str, optional
-        String with a ``{basis_state}`` replacement field, indicating a
-        file containing data for a given basis state.
-    initial_state_ref_template : str, optional
-        String with an ``{initial_state}`` replacement field, indicating a
-        file containing data for a given initial state.
     data_handlers : list of DataHandler, optional
         One or more handlers specifying how datasets should be retrieved.
 
@@ -292,15 +288,15 @@ class ExecutablePropagator(WESTPropagator):
         self,
         rc=None,
         *,
+        segment_ref_template=None,
+        basis_state_ref_template=None,
+        initial_state_ref_template=None,
         propagator=None,
         gen_istate=None,
         get_pcoord=None,
         pre_iteration=None,
         post_iteration=None,
         environ=None,
-        segment_ref_template=None,
-        basis_state_ref_template=None,
-        initial_state_ref_template=None,
         data_handlers=None,
     ):
         super().__init__(rc)
@@ -335,6 +331,7 @@ class ExecutablePropagator(WESTPropagator):
 
         if rc is not None:
             self._process_config(rc)
+            return
 
         if segment_ref_template is not None:
             self.segment_ref_template = segment_ref_template
