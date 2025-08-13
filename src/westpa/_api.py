@@ -103,8 +103,8 @@ class Simulation:
         Maximum number of iterations for the run.
     max_run_walltime : float, optional
         Maximum elapsed real time for the run.
-    status_stream : io.TextIOBase, optional
-        Stream to print status updates to. Defaults to ``stdout``.
+    status_stream : file-like object or str, optional
+        Stream or file to print status updates to. Defaults to ``stdout``.
     verbosity : {'quiet', 'verbose', 'debug', None}, optional
         Verbosity level of status output.
 
