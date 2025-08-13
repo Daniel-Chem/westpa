@@ -255,7 +255,6 @@ class Simulation:
         start_states=None,
         segments_per_state=1,
         suppress_we=False,
-        overwrite=False,
     ):
         """Initialize the simulation, taking `segments_per_state` initial states
         from each of the given `basis_states` and `start_states`.
@@ -267,7 +266,6 @@ class Simulation:
         start_states : list of BasisState
         segments_per_state : int, default 1
         suppress_we : bool, default False
-        overwrite : bool, default False
 
         """
         target_states = target_states or []
@@ -279,8 +277,9 @@ class Simulation:
         for state in starting_states:
             state.probability *= scale_factor
 
-        if not overwrite and os.path.exists(self.data_manager.we_h5filename):
-            raise ValueError(f"can't initialize the simulation: " f'file {self.data_manager.we_h5filename!r} already exists')
+        if os.path.exists(self.data_manager.we_h5filename):
+            reason = f'data file {self.data_manager.we_h5filename!r} already exists'
+            raise ValueError(f"can't initialize the simulation: {reason}")
 
         with self.work_manager as work_manager:
             if work_manager.is_master:
