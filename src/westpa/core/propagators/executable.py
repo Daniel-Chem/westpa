@@ -9,7 +9,7 @@ import tempfile
 import time
 import tarfile
 import pickle
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from io import BytesIO
 
@@ -22,6 +22,7 @@ from westpa.core.propagators import WESTPropagator
 from westpa.core.states import BasisState, InitialState, return_state_type
 from westpa.core.segment import Segment
 from westpa.core.yamlcfg import check_bool
+from .._dataset import Dataset
 
 from westpa.core.trajectory import load_trajectory
 from westpa.core.h5io import safe_extract
@@ -169,12 +170,11 @@ data_loaders = {
 }
 
 
+# This data class corresponds to the JSON type of the values in the
+# ``('west', 'executable')`` section of a run configuration file.
 @dataclass
 class Executable:
     """An external program to be run in a subprocess.
-
-    This data class corresponds to the JSON type of the values in the
-    ``('west', 'executable')`` section of a run configuration file.
 
     Parameters
     ----------
@@ -198,33 +198,6 @@ class Executable:
 
     def __post_init__(self):
         self.environ = {k: str(v) for k, v in self.environ.items()}
-
-
-@dataclass
-class DataHandler:
-    """A :class:`DataHandler` object specifies how a dataset should be retrieved.
-
-    Parameters
-    ----------
-    name : str
-        Name of the dataset.
-    loader : Callable
-        Loader function to use. See ``westpa.data_loaders`` for built-in functions.
-    filename : str, optional
-        String with a ``{segment}`` replacement field, indicating a file system
-        location at which to store data for a given segment.
-    dir : bool, default False
-        Whether the data is located in a directory (True) or a file (False).
-    enabled : bool, default True
-        If False, the dataset `name` will not be loaded.
-
-    """
-
-    name: str
-    loader: Callable
-    filename: str = None
-    dir: bool = False
-    enabled: bool = True
 
 
 # TODO: Can we pass environ={'WEST_SIM_ROOT': os.getcwd()} instead of exporting to os.environ?
@@ -255,8 +228,9 @@ class ExecutablePropagator(WESTPropagator):
     environ : Mapping[str, str], optional
         Environment variables to make available to the external programs run by
         the propagator.
-    data_handlers : list of DataHandler, optional
-        One or more handlers specifying how datasets should be retrieved.
+    datasets : list of Dataset, optional
+        One or more datasets to load, along with options for their retrieval.
+        By default, only the ``'pcoord'`` dataset is loaded.
 
     """
 
@@ -297,7 +271,7 @@ class ExecutablePropagator(WESTPropagator):
         pre_iteration=None,
         post_iteration=None,
         environ=None,
-        data_handlers=None,
+        datasets=None,
     ):
         super().__init__(rc)
 
@@ -324,10 +298,8 @@ class ExecutablePropagator(WESTPropagator):
 
         # A mapping of data set name ('pcoord', 'coord', 'com', etc.) to a dictionary of
         # attributes like 'loader', 'dtype', etc.
-        self.data_info = {}
-
-        default_pcoord_handler = DataHandler(name='pcoord', loader=pcoord_loader)
-        self.data_info['pcoord'] = dataclasses.asdict(default_pcoord_handler)
+        default_pcoord_dataset = Dataset(name='pcoord', loader=pcoord_loader)
+        self.data_info = {'pcoord': dataclasses.asdict(default_pcoord_dataset)}
 
         if rc is not None:
             self._process_config(rc)
@@ -366,9 +338,9 @@ class ExecutablePropagator(WESTPropagator):
 
         log.debug('exe_info: {!r}'.format(self.exe_info))
 
-        if data_handlers is not None:
-            for handler in data_handlers:
-                self.data_info[handler.name] = dataclasses.asdict(handler)
+        if datasets is not None:
+            for dataset in datasets:
+                self.data_info[dataset.name] = dataclasses.asdict(dataset)
 
         log.debug('data_info: {!r}'.format(self.data_info))
 
@@ -468,14 +440,6 @@ class ExecutablePropagator(WESTPropagator):
             self.data_info.setdefault(dsname, {}).update(dsinfo)
 
         log.debug('data_info: {!r}'.format(self.data_info))
-
-    @property
-    def data_handlers(self):
-        handlers = []
-        for dsinfo in self.data_info.values():
-            kwargs = {f.name: dsinfo[f.name] for f in dataclasses.fields(DataHandler) if f.name in dsinfo}
-            handlers.append(DataHandler(**kwargs))
-        return handlers
 
     @staticmethod
     def makepath(template, template_args=None, expanduser=True, expandvars=True, abspath=False, realpath=False):

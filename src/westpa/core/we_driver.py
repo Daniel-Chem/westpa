@@ -175,19 +175,21 @@ class WEDriver:
             if rc is not None:
                 self.rc = rc
                 self.process_config()
-        else:
-            self.system = WESTSystem()
-            self.system.pcoord_ndim = pcoord_ndim
-            self.system.pcoord_len = pcoord_len
-            self.system.pcoord_dtype = pcoord_dtype
-            if bin_mapper is not None:
-                self._update_bins(bin_mapper, bin_target_counts)
-            self.weight_split_threshold = weight_split_threshold
-            self.weight_merge_cutoff = weight_merge_cutoff
-            self.largest_allowed_weight = largest_allowed_weight
-            self.smallest_allowed_weight = smallest_allowed_weight
-            self.do_thresholds = thresholds
-            self.do_adjust_counts = adjust_counts
+            return
+
+        self.system = WESTSystem()
+        self.system.pcoord_ndim = pcoord_ndim
+        self.system.pcoord_len = pcoord_len
+        self.system.pcoord_dtype = pcoord_dtype
+        if bin_mapper is not None:
+            self._update_bins(bin_mapper, bin_target_counts)
+
+        self.weight_split_threshold = weight_split_threshold
+        self.weight_merge_cutoff = weight_merge_cutoff
+        self.largest_allowed_weight = largest_allowed_weight
+        self.smallest_allowed_weight = smallest_allowed_weight
+        self.do_thresholds = thresholds
+        self.do_adjust_counts = adjust_counts
 
         self.check_threshold_configs()
 

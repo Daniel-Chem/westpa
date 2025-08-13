@@ -18,9 +18,11 @@ __all__ = [
     'WEDriver',
     'ExecutablePropagator',
     'Executable',
-    'DataHandler',
-    'data_loaders',
+    'aux_data_loader',
+    'npy_data_loader',
+    'pickle_data_loader',
     'OpenMMPropagator',
+    'Dataset',
 ]
 
 from .core.segment import Segment
@@ -42,14 +44,17 @@ from .core.systems import WESTSystem
 from .core.propagators.executable import (
     ExecutablePropagator,
     Executable,
-    DataHandler,
-    data_loaders,
+    aux_data_loader,
+    npy_data_loader,
+    pickle_data_loader,
 )
 
 try:
     from .core.propagators._openmm import OpenMMPropagator
 except ImportError:
     pass
+
+from .core._dataset import Dataset
 
 from .core import _rc
 from .core.we_driver import WEDriver
