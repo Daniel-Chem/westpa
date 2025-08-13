@@ -70,11 +70,11 @@ class WEDriver:
     pcoord_dtype : numpy.dtype, default dtype('float32')
         Data type of the progress coordinate.
     bin_mapper : BinMapper, optional
-        Bin mapper for grouping segments into bins. Defaults to no binning.
-    bin_target_counts : int or sequence of int, optional
+        Bin mapper for grouping segments into bins. By default, all segments are
+        grouped into a single bin.
+    bin_target_counts : int or sequence of int, default 1
         A single target count to use for all the bins, or a sequence of
-        target counts, one per bin. This parameter is required when `bin_mapper`
-        is specified (and ignored if it is not specified).
+        target counts, one per bin.
     weight_split_threshold : float, default 2.0
         Threshold for splitting, in units of the "ideal weight" (the total
         weight of the bin divided by the target count).
@@ -127,7 +127,7 @@ class WEDriver:
         pcoord_len=2,
         pcoord_dtype='float32',
         bin_mapper=None,
-        bin_target_counts=None,
+        bin_target_counts=1,
         weight_split_threshold=2.0,
         weight_merge_cutoff=1.0,
         largest_allowed_weight=1.0,
@@ -192,8 +192,6 @@ class WEDriver:
         self.check_threshold_configs()
 
     def _update_bins(self, bin_mapper, bin_target_counts):
-        if bin_target_counts is None:
-            raise ValueError("'bin_target_counts' must be specified")
         if isinstance(bin_target_counts, int):
             bin_target_counts = np.repeat(bin_target_counts, bin_mapper.nbins)
         else:
