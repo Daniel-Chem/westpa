@@ -1,3 +1,4 @@
+import copy
 import io
 import logging
 import os
@@ -15,6 +16,30 @@ from .work_managers.core import WorkManager
 
 log = logging.getLogger(__name__)
 rng = np.random.Generator(np.random.MT19937())
+
+
+def reweight(segment, new_weight):
+    """Return a copy of a segment with a new weight.
+
+    Parameters
+    ----------
+    segment : Segment
+        Segment to copy.
+    new_weight : float
+        Weight to assign the copy.
+
+    Returns
+    -------
+    Segment
+        Shallow copy of `segment` with weight `new_weight`.
+
+    """
+    new_weight = float(new_weight)
+    if not (0 < new_weight <= 1):
+        raise ValueError("'new_weight' must be positive and less than or equal to 1")
+    segment = copy.copy(segment)
+    segment.weight = new_weight
+    return segment
 
 
 def split(segment, into=2):
@@ -38,7 +63,7 @@ def split(segment, into=2):
     if not into >= 2:
         raise ValueError("'into' must be greater than or equal to 2")
     new_weight = segment.weight / into
-    return [segment.reweight(new_weight) for _ in range(into)]
+    return [reweight(segment, new_weight) for _ in range(into)]
 
 
 def merge(segments):
@@ -58,7 +83,7 @@ def merge(segments):
     """
     weights = np.array([segment.weight for segment in segments])
     segment = rng.choice(segments, p=weights)
-    return segment.reweight(weights.sum())
+    return reweight(segment, weights.sum())
 
 
 class Simulation:
