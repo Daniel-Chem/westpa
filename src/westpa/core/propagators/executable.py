@@ -208,7 +208,7 @@ class ExecutablePropagator(WESTPropagator):
     ----------
     segment_ref_template : str
         String with a ``{segment}`` replacement field, indicating the
-        directory in which to store output files for a given segment.
+        directory in which to store output for a given segment.
     basis_state_ref_template : str
         String with a ``{basis_state}`` replacement field, indicating a
         file containing coordinate data for a given basis state.
