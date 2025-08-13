@@ -202,7 +202,7 @@ class Executable:
 
 # TODO: Can we pass environ={'WEST_SIM_ROOT': os.getcwd()} instead of exporting to os.environ?
 class ExecutablePropagator(WESTPropagator):
-    """Propagator that runs dynamics and performs other tasks by running external programs.
+    """A propagator that runs dynamics and performs other tasks by running external programs.
 
     Parameters
     ----------

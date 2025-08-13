@@ -59,7 +59,7 @@ class NewWeightEntry:
 
 
 class WEDriver:
-    """Resampler that implements the weighted ensemble algorithm of Huber & Kim. [1]_
+    """A resampler that implements the weighted ensemble algorithm of Huber & Kim. [1]_
 
     Parameters
     ----------
