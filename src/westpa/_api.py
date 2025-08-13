@@ -87,7 +87,7 @@ def merge(segments):
 
 
 class Simulation:
-    """The Simulation object provides an interface for running a WESTPA simulation.
+    """The Simulation object provides an interface for initializing and running a WESTPA simulation.
 
     Parameters
     ----------
