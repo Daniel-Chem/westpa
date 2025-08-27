@@ -1,13 +1,14 @@
+import json
 import math
 
 import numpy as np
 
 
 class Segment:
-    '''A class wrapping segment data that must be passed through the work manager or data manager.
+    """A class wrapping segment data that must be passed through the work manager or data manager.
     Most fields are self-explanatory.  One item worth noting is that a negative parent ID means that
     the segment starts from the initial state with ID -(segment.parent_id+1)
-    '''
+    """
 
     SEG_STATUS_UNSET = 0
     SEG_STATUS_PREPARED = 1
@@ -31,15 +32,15 @@ class Segment:
     initpoint_type_names = {}
     endpoint_type_names = {}
 
-    # convenience functions for binning
+    # convenience functions for binning  # TODO: Can we remove these?
     @staticmethod
     def initial_pcoord(segment):
-        'Return the initial progress coordinate point of this segment.'
+        """Return the initial progress coordinate point of this segment."""
         return segment.pcoord[0]
 
     @staticmethod
     def final_pcoord(segment):
-        'Return the final progress coordinate point of this segment.'
+        """Return the final progress coordinate point of this segment."""
         return segment.pcoord[-1]
 
     def __init__(
@@ -55,6 +56,9 @@ class Segment:
         walltime=None,
         cputime=None,
         data=None,
+        initpoint=None,
+        endpoint=None,
+        failure_reason=None,
     ):
         # NaNs appear sometimes if a WEST program is terminated unexpectedly; replace with zero
         walltime = 0.0 if walltime is None or math.isnan(walltime) else walltime
@@ -76,6 +80,42 @@ class Segment:
         self.walltime = walltime
         self.cputime = cputime
         self.data = data if data else {}
+
+        self._initpoint = initpoint
+        self._endpoint = endpoint
+        self._failure_reason = failure_reason
+
+    @property
+    def initpoint(self):
+        """Any: Starting point of the segment."""
+        return self._initpoint
+
+    @property
+    def endpoint(self):
+        """Any: Ending point of the segment."""
+        return self._endpoint
+
+    @endpoint.setter
+    def endpoint(self, value):
+        try:
+            json.dumps(value)
+        except TypeError:
+            raise TypeError("'endpoint' must be a JSON-serializable object")
+        self._endpoint = value
+
+    def mark_as_failed(self, reason):
+        """Mark the segment as failed due to a propagator error.
+
+        Parameters
+        ----------
+        reason : str
+            Reason for the failure.
+
+        """
+        if not isinstance(reason, str):
+            raise TypeError("'reason' must be a string")
+        self.status = Segment.SEG_STATUS_FAILED
+        self._failure_reason = reason
 
     def __repr__(self):
         return '<%s(%s) n_iter=%r seg_id=%r weight=%r parent_id=%r wtg_parent_ids=%r pcoord[0]=%r pcoord[-1]=%r>' % (
