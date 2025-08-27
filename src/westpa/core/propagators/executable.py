@@ -9,7 +9,7 @@ import tempfile
 import time
 import tarfile
 import pickle
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from io import BytesIO
 
@@ -178,7 +178,7 @@ class Executable:
 
     Parameters
     ----------
-    executable : str
+    args : str or sequence of str
     stdin : str, default os.devnull
     stdout : str, optional
     stderr : str, optional
@@ -188,7 +188,7 @@ class Executable:
 
     """
 
-    executable: str
+    args: str | Sequence[str]
     stdin: str = os.devnull
     stdout: str = None
     stderr: str = None
@@ -331,7 +331,9 @@ class ExecutablePropagator(WESTPropagator):
             'post_iteration': post_iteration,
         }.items():
             if executable is not None:
-                self.exe_info[child_name] = dataclasses.asdict(executable)
+                child_info = dataclasses.asdict(executable)
+                child_info['executable'] = child_info.pop('args')
+                self.exe_info[child_name] = child_info
 
         if not self.exe_info['propagator']:
             raise ValueError("the 'propagator' program must be specified")
@@ -491,7 +493,7 @@ class ExecutablePropagator(WESTPropagator):
 
         # close_fds is critical for preventing out-of-file errors
         proc = subprocess.Popen(
-            [executable],
+            executable,
             cwd=cwd,
             stdin=stdin,
             stdout=stdout,
