@@ -9,8 +9,6 @@ import tempfile
 import time
 import tarfile
 import pickle
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from io import BytesIO
 
 import numpy as np
@@ -23,6 +21,7 @@ from westpa.core.states import BasisState, InitialState, return_state_type
 from westpa.core.segment import Segment
 from westpa.core.yamlcfg import check_bool
 from .._dataset import Dataset
+from .._executable import Executable
 
 from westpa.core.trajectory import load_trajectory
 from westpa.core.h5io import safe_extract
@@ -170,36 +169,6 @@ data_loaders = {
 }
 
 
-# This data class corresponds to the JSON type of the values in the
-# ``('west', 'executable')`` section of a run configuration file.
-@dataclass
-class Executable:
-    """An external program to be run in a subprocess.
-
-    Parameters
-    ----------
-    args : str or sequence of str
-    stdin : str, default os.devnull
-    stdout : str, optional
-    stderr : str, optional
-    cwd : str, optional
-    environ : Mapping[str, str], optional
-    enabled : bool, default True
-
-    """
-
-    args: str | Sequence[str]
-    stdin: str = os.devnull
-    stdout: str = None
-    stderr: str = None
-    cwd: str = None
-    environ: Mapping[str, str] = field(default_factory=dict)
-    enabled: bool = True
-
-    def __post_init__(self):
-        self.environ = {k: str(v) for k, v in self.environ.items()}
-
-
 # TODO: Can we pass environ={'WEST_SIM_ROOT': os.getcwd()} instead of exporting to os.environ?
 class ExecutablePropagator(WESTPropagator):
     """A propagator that runs dynamics and performs other tasks by running external programs.
@@ -331,8 +300,11 @@ class ExecutablePropagator(WESTPropagator):
             'post_iteration': post_iteration,
         }.items():
             if executable is not None:
+                if not isinstance(executable, Executable):
+                    raise TypeError(f'{child_name!r} must be of type {Executable}')
                 child_info = dataclasses.asdict(executable)
                 child_info['executable'] = child_info.pop('args')
+                child_info['enabled'] = True
                 self.exe_info[child_name] = child_info
 
         if not self.exe_info['propagator']:
