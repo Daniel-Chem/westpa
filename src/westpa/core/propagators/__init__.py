@@ -1,6 +1,5 @@
 import itertools
 
-import westpa
 from ._abc import Propagator
 
 
@@ -23,8 +22,6 @@ class WESTPropagator(Propagator):
         # thus potentially send them all over the wire when only one of them is needed, e.g.)
         self.basis_states = {}
         self.initial_states = {}
-
-        self.rc = rc or westpa.rc
 
     def prepare_iteration(self, n_iter, segments):
         """Perform any necessary per-iteration preparation.  This is run by the work manager."""
