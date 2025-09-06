@@ -1,7 +1,9 @@
+import inspect
 import json
 
 import numpy as np
 
+from ._auxdata import AuxiliaryData
 from ._dtypes import (
     vstr_dtype,
     weight_dtype,
@@ -23,18 +25,48 @@ class Microstate:
         Probability of observing the microstate.
     label : str, optional
         Descriptive label for the state.
+    pcoord : array_like, optional
+        Progress coordinate of the state.
+    auxref : str, optional
+        Reference to data associated with the state (usually a file system path).
+    data : Mapping[str, array_like], optional
+        Auxiliary data for the state.
 
     """
 
-    def __init__(self, identifier, *, probability=None, label=None):
+    def __init__(
+        self,
+        identifier,
+        *,
+        probability=None,
+        label=None,
+        pcoord=None,
+        auxref=None,
+        data=None,
+    ):
         try:
-            self._identifier = json.dumps(identifier)
+            json.dumps(identifier)
         except TypeError:
             raise TypeError("'identifier' must be a JSON serializable object")
-        if probability is not None:
-            self.probability = probability
-        if label is not None:
-            self.label = label
+
+        # read-only properties
+        self._identifier = identifier
+        self._data = AuxiliaryData(data or {})
+
+        # writable properties
+        self.probability = probability
+        self.label = label
+        self.pcoord = pcoord
+        self.auxref = auxref
+
+    def __repr__(self):
+        args = repr(self.identifier)
+        for param in inspect.signature(self.__init__).parameters.values():
+            if param.kind != param.KEYWORD_ONLY:
+                continue
+            if value := getattr(self, param.name):
+                args += f', {param.name}={value!r}'
+        return type(self).__name__ + '(' + args + ')'
 
     @property
     def identifier(self):
@@ -46,9 +78,12 @@ class Microstate:
 
     @probability.setter
     def probability(self, value):
-        if not (0 <= value <= 1):
+        if value is None:
+            self._probability = None
+        elif 0 <= value <= 1:
+            self._probability = float(value)
+        else:
             raise ValueError("'probability' must be between 0 and 1")
-        self._probability = float(value)
 
     @property
     def label(self):
@@ -56,7 +91,37 @@ class Microstate:
 
     @label.setter
     def label(self, value):
-        self._label = str(value, encoding='utf-8') if isinstance(value, bytes) else str(value)
+        if value is None:
+            self._label = None
+        elif isinstance(value, bytes):
+            self._label = str(value, encoding='utf-8')
+        else:
+            self._label = str(value)
+
+    @property
+    def pcoord(self):
+        return self._pcoord
+
+    @pcoord.setter
+    def pcoord(self, value):
+        self._pcoord = np.asarray(value)
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def auxref(self):
+        return self._auxref
+
+    @auxref.setter
+    def auxref(self, value):
+        if value is None:
+            self._auxref = None
+        elif isinstance(value, str):
+            self._auxref = value
+        else:
+            raise TypeError("'auxref' must be a string")
 
 
 class BasisState(Microstate):
@@ -83,11 +148,15 @@ class BasisState(Microstate):
     """
 
     def __init__(self, label, probability, pcoord=None, auxref=None, state_id=None, data=None):
-        super().__init__(state_id, probability=probability, label=label)
-        self.pcoord = np.atleast_1d(pcoord)
-        self.auxref = auxref
+        super().__init__(
+            state_id,
+            probability=probability,
+            label=label,
+            pcoord=np.atleast_1d(pcoord),
+            data=data,
+            auxref=auxref,
+        )
         self.state_id = state_id
-        self.data = data or {}
 
     def __repr__(self):
         return '{} state_id={self.state_id!s} label={self.label!s} prob={self.probability!s} pcoord={self.pcoord!s}>'.format(
@@ -257,7 +326,7 @@ class InitialState(Microstate):
         basis_auxref=None,
         data=None,
     ):
-        super().__init__(state_id)
+        super().__init__(state_id, pcoord=np.atleast_1d(pcoord), data=data)
         self.state_id = state_id
         self.basis_state_id = basis_state_id
         self.basis_state = basis_state
@@ -265,9 +334,7 @@ class InitialState(Microstate):
         self.istate_status = istate_status
         self.iter_created = iter_created
         self.iter_used = iter_used
-        self.pcoord = np.atleast_1d(pcoord)
         self.basis_auxref = basis_auxref
-        self.data = data or {}
 
     def __repr__(self):
         return '{} state_id={self.state_id!s} istate_type={self.istate_type!s} basis_state_id={self.basis_state_id!s} iter_created={self.iter_created!s} pcoord={self.pcoord!s}>'.format(
