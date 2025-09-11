@@ -3,6 +3,8 @@ import math
 
 import numpy as np
 
+from ._auxdata import AuxiliaryData
+
 
 class Segment:
     """A class wrapping segment data that must be passed through the work manager or data manager.
@@ -79,7 +81,7 @@ class Segment:
         self.pcoord = np.asarray(pcoord) if pcoord is not None else None
         self.walltime = walltime
         self.cputime = cputime
-        self.data = data if data else {}
+        self._data = data or AuxiliaryData()
 
         self._initpoint = initpoint
         self._endpoint = endpoint
@@ -102,6 +104,10 @@ class Segment:
         except TypeError:
             raise TypeError("'endpoint' must be a JSON-serializable object")
         self._endpoint = value
+
+    @property
+    def data(self):
+        return self._data
 
     def mark_as_failed(self, reason):
         """Mark the segment as failed due to a propagator error.
