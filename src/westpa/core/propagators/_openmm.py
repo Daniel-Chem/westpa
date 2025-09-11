@@ -34,7 +34,7 @@ class OpenMMPropagator(Propagator):
     trajectory_report_interval : int, optional
         Interval (in time steps) at which to write coordinates. If None (the default),
         no trajectory will be written.
-    trajectory_filename : str, default 'seg.dcd'
+    trajectory_filename : str, default 'traj.dcd'
         Name of the trajectory file.
     trajectory_options : Mapping[str, Any], optional
         Keyword arguments to pass to the trajectory reporter.
@@ -42,7 +42,7 @@ class OpenMMPropagator(Propagator):
     log_report_interval : int, optional
         Interval (in time steps) at which to write log data. If None (the default),
         no log will be written.
-    log_filename : str, default 'seg.log'
+    log_filename : str, default 'log.csv'
         Name of the log file.
     log_options : Mapping[str, Any], optional
         Keyword arguments to pass to the log reporter.
@@ -56,28 +56,26 @@ class OpenMMPropagator(Propagator):
         topology,
         system,
         integrator,
+        steps,
         platform=None,
         platform_properties=None,
-        steps,
         sim_root=None,
         output_dir_template="traj_segs/{segment.n_iter:06d}/{segment.seg_id:06d}",
         endpoint_filename="endpoint.xml",
         trajectory_report_interval=None,
-        trajectory_filename="seg.dcd",
+        trajectory_filename="traj.dcd",
         trajectory_options=None,
         log_report_interval=None,
-        log_filename="seg.log",
+        log_filename="log.csv",
         log_options=None,
     ):
-        self.sim_root = os.path.abspath(sim_root) if sim_root is not None else os.getcwd()
-        self.simulation = openmm.app.Simulation(
-            topology,
-            system,
-            integrator,
-            platform=platform,
-            platformProperties=platform_properties,
-        )
+        self.topology = topology
+        self.system = system
+        self.integrator = integrator
         self.steps = steps
+        self.platform = platform
+        self.platform_properties = platform_properties
+        self.sim_root = os.path.abspath(sim_root) if sim_root is not None else os.getcwd()
         self.output_dir_template = output_dir_template
         self.endpoint_filename = endpoint_filename
         self.trajectory_report_interval = trajectory_report_interval
@@ -88,6 +86,14 @@ class OpenMMPropagator(Propagator):
         self.log_options = log_options or {}
 
     def __call__(self, segment):
+        simulation = openmm.app.Simulation(
+            self.topology,
+            self.system,
+            self.integrator,
+            platform=self.platform,
+            platformProperties=self.platform_properties,
+        )
+
         output_dir = os.path.join(self.sim_root, self.output_dir_template.format(segment=segment))
         os.makedirs(output_dir)
 
@@ -95,28 +101,30 @@ class OpenMMPropagator(Propagator):
         endpoint_file = os.path.join(output_dir, self.endpoint_filename)
 
         # Set up trajectory and log reporters.
-        self.simulation.reporters.clear()
         trajectory_file = None
         log_file = None
         if self.trajectory_report_interval is not None:
             trajectory_file = os.path.join(output_dir, self.trajectory_filename)
-            self.simulation.reporters.append(
+            simulation.reporters.append(
                 openmm.app.DCDReporter(trajectory_file, self.trajectory_report_interval, **self.trajectory_options)
             )
         if self.log_report_interval is not None:
             log_file = os.path.join(output_dir, self.log_filename)
-            self.simulation.reporters.append(openmm.app.StateDataReporter(log_file, self.log_report_interval, **self.log_options))
+            simulation.reporters.append(openmm.app.StateDataReporter(log_file, self.log_report_interval, **self.log_options))
 
         # Run the simulation.
-        self.simulation.loadState(segment.initpoint)
-        self.simulation.step(self.steps)
-        self.simulation.saveState(endpoint_file)
+        simulation.loadState(segment.initpoint)
+        simulation.step(self.steps)
+        simulation.saveState(endpoint_file)
 
         # Store the results.
         segment.endpoint = os.path.abspath(endpoint_file)
         if trajectory_file is not None:
-            segment.data["trajectory"] = os.path.abspath(trajectory_file)
+            segment.data["trajectory"] = os.path.abspath(trajectory_file).encode('utf-8')
         if log_file is not None:
-            segment.data["log"] = os.path.abspath(log_file)
+            segment.data["log"] = os.path.abspath(log_file).encode('utf-8')
 
         return segment
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} at {hex(id(self))}>'
