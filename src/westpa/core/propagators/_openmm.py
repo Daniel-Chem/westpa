@@ -1,3 +1,4 @@
+import copy
 import os
 
 import openmm.app
@@ -89,7 +90,7 @@ class OpenMMPropagator(Propagator):
         simulation = openmm.app.Simulation(
             self.topology,
             self.system,
-            self.integrator,
+            copy.copy(self.integrator),
             platform=self.platform,
             platformProperties=self.platform_properties,
         )
