@@ -1,7 +1,7 @@
 import copy
 import os
 
-import openmm.app
+from openmm.app import DCDReporter, Simulation, StateDataReporter
 
 from ._abc import Propagator
 
@@ -9,8 +9,8 @@ from ._abc import Propagator
 class OpenMMPropagator(Propagator):
     """Molecular dynamics propagator built on the OpenMM MD engine.
 
-    This propagator assumes that segment ``initpoint`` and ``endpoint`` values
-    are absolute paths to files containing XML-serialized OpenMM State objects.
+    This propagator assumes that microstate are identified by absolute paths to
+    XML files containing serialized OpenMM State objects.
 
     Parameters
     ----------
@@ -28,8 +28,10 @@ class OpenMMPropagator(Propagator):
         Platform-specific properties to pass to the simulation context.
     sim_root : str, optional
         Simulation root directory. Default is the current working directory.
-    output_dir_template : str, default 'traj_segs/{segment.n_iter:06d}/{segment.seg_id:06d}'
-        Directory in which to store output for a given segment.
+    output_dir_template : str, default 'traj_segs/{n_iter:06d}/{seg_id:06d}'
+        Template string specifying the subdirectory in which to store output
+        for a given segment. The string must contain ``{n_iter}``  and
+        ``{seg_id}`` replacement fields.
     endpoint_filename : str, default 'endpoint.xml'
         Name of the file for storing the segment's termination point.
     trajectory_report_interval : int, optional
@@ -61,7 +63,7 @@ class OpenMMPropagator(Propagator):
         platform=None,
         platform_properties=None,
         sim_root=None,
-        output_dir_template="traj_segs/{segment.n_iter:06d}/{segment.seg_id:06d}",
+        output_dir_template="traj_segs/{n_iter:06d}/{seg_id:06d}",
         endpoint_filename="endpoint.xml",
         trajectory_report_interval=None,
         trajectory_filename="traj.dcd",
@@ -87,43 +89,36 @@ class OpenMMPropagator(Propagator):
         self.log_options = log_options or {}
 
     def __call__(self, segment):
-        simulation = openmm.app.Simulation(
+        simulation = Simulation(
             self.topology,
             self.system,
             copy.copy(self.integrator),
             platform=self.platform,
             platformProperties=self.platform_properties,
+            state=segment.initpoint,
         )
 
-        output_dir = os.path.join(self.sim_root, self.output_dir_template.format(segment=segment))
+        output_dir = os.path.join(
+            self.sim_root,
+            self.output_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id),
+        )
         os.makedirs(output_dir)
 
         # The final simulation state will be saved to 'endpoint_file'.
         endpoint_file = os.path.join(output_dir, self.endpoint_filename)
 
         # Set up trajectory and log reporters.
-        trajectory_file = None
-        log_file = None
         if self.trajectory_report_interval is not None:
             trajectory_file = os.path.join(output_dir, self.trajectory_filename)
-            simulation.reporters.append(
-                openmm.app.DCDReporter(trajectory_file, self.trajectory_report_interval, **self.trajectory_options)
-            )
+            simulation.reporters.append(DCDReporter(trajectory_file, self.trajectory_report_interval, **self.trajectory_options))
         if self.log_report_interval is not None:
             log_file = os.path.join(output_dir, self.log_filename)
-            simulation.reporters.append(openmm.app.StateDataReporter(log_file, self.log_report_interval, **self.log_options))
+            simulation.reporters.append(StateDataReporter(log_file, self.log_report_interval, **self.log_options))
 
-        # Run the simulation.
-        simulation.loadState(segment.initpoint)
+        # Run the simulation and store the final state.
         simulation.step(self.steps)
         simulation.saveState(endpoint_file)
-
-        # Store the results.
-        segment.endpoint = os.path.abspath(endpoint_file)
-        if trajectory_file is not None:
-            segment.data["trajectory"] = os.path.abspath(trajectory_file).encode('utf-8')
-        if log_file is not None:
-            segment.data["log"] = os.path.abspath(log_file).encode('utf-8')
+        segment.endpoint = endpoint_file
 
         return segment
 
