@@ -1,21 +1,23 @@
 import copy
 import os
 
+import openmm
 from openmm.app import DCDReporter, Simulation, StateDataReporter
 
 from ._abc import Propagator
 
 
 class OpenMMPropagator(Propagator):
-    """Molecular dynamics propagator built on the OpenMM MD engine.
+    """Molecular dynamics propagator built on the `OpenMM <https://openmm.org/>`_ toolkit.
 
-    This propagator assumes that microstate are identified by absolute paths to
-    XML files containing serialized OpenMM State objects.
+    This propagator assumes that :class:`Microstate` identifiers are absolute
+    paths to XML files containing serialized OpenMM State objects, e.g.,
+    ``os.path.abspath('state.xml')``.
 
     Parameters
     ----------
     topology : openmm.app.Topology
-        Topology of the molecular system.
+        Topology of the system.
     system : openmm.System
         System (particles, forces, and constraints) to simulate.
     integrator : openmm.Integrator
@@ -27,29 +29,56 @@ class OpenMMPropagator(Propagator):
     platform_properties : Mapping[str, str], optional
         Platform-specific properties to pass to the simulation context.
     sim_root : str, optional
-        Simulation root directory. Default is the current working directory.
+        Root directory for simulation output. Default is the current working directory.
     output_dir_template : str, default 'traj_segs/{n_iter:06d}/{seg_id:06d}'
         Template string specifying the subdirectory in which to store output
-        for a given segment. The string must contain ``{n_iter}``  and
-        ``{seg_id}`` replacement fields.
+        for a given segment. Must contain ``{n_iter}``  and ``{seg_id}``
+        replacement fields.
     endpoint_filename : str, default 'endpoint.xml'
         Name of the file for storing the segment's termination point.
-    trajectory_report_interval : int, optional
-        Interval (in time steps) at which to write coordinates. If None (the default),
-        no trajectory will be written.
-    trajectory_filename : str, default 'traj.dcd'
+    traj_report_interval : int, optional
+        Interval (in time steps) at which to write frames to the trajectory file.
+        By default, no trajectory file is written.
+    traj_filename : str, default 'traj.dcd'
         Name of the trajectory file.
-    trajectory_options : Mapping[str, Any], optional
-        Keyword arguments to pass to the trajectory reporter.
-        See the :class:`openmm.app.DCDReporter` documentation for more information.
+    traj_options : Mapping[str, Any], optional
+        Keyword arguments to pass to the
+        `trajectory reporter <https://docs.openmm.org/latest/api-python/generated/openmm.app.dcdreporter.DCDReporter.html>`_.
     log_report_interval : int, optional
-        Interval (in time steps) at which to write log data. If None (the default),
-        no log will be written.
+        Interval (in time steps) at which to write state data to the log file.
+        By default, no log file is written.
     log_filename : str, default 'log.csv'
         Name of the log file.
     log_options : Mapping[str, Any], optional
-        Keyword arguments to pass to the log reporter.
-        See the :class:`openmm.app.StateDataReporter` documentation for more information.
+        Keyword arguments to pass to the `state data reporter
+        <https://docs.openmm.org/latest/api-python/generated/openmm.app.statedatareporter.StateDataReporter.html>`_.
+
+    Examples
+    --------
+    Create an OpenMM propagator:
+
+    >>> import westpa
+    >>> import openmm
+    >>> from openmm import app, unit
+    >>> topology = app.PDBFile('topology.pdb').getTopology()
+    >>> forcefield = app.ForceField('amber14-all.xml')
+    >>> propagator = westpa.OpenMMPropagator(
+    ...     topology=topology,
+    ...     system=forcefield.createSystem(
+    ...         topology, nonbondedMethod=app.PME, constraints=app.HBonds
+    ...     ),
+    ...     integrator=openmm.LangevinIntegrator(
+    ...         300 * unit.kelvin, 1 / unit.picosecond, 2 * unit.femtosecond
+    ...     ),
+    ...     steps=1000,
+    ... )
+
+    Initialize a simulation with a single basis state stored in ``bstate.xml``:
+
+    >>> simulation = westpa.Simulation(propagator=propagator, ...)
+    >>> simulation.initialize(
+    ...     basis_states=[westpa.Microstate(os.path.abpath('bstate.xml'))]
+    ... )
 
     """
 
@@ -65,9 +94,9 @@ class OpenMMPropagator(Propagator):
         sim_root=None,
         output_dir_template="traj_segs/{n_iter:06d}/{seg_id:06d}",
         endpoint_filename="endpoint.xml",
-        trajectory_report_interval=None,
-        trajectory_filename="traj.dcd",
-        trajectory_options=None,
+        traj_report_interval=None,
+        traj_filename="traj.dcd",
+        traj_options=None,
         log_report_interval=None,
         log_filename="log.csv",
         log_options=None,
@@ -81,9 +110,9 @@ class OpenMMPropagator(Propagator):
         self.sim_root = os.path.abspath(sim_root) if sim_root is not None else os.getcwd()
         self.output_dir_template = output_dir_template
         self.endpoint_filename = endpoint_filename
-        self.trajectory_report_interval = trajectory_report_interval
-        self.trajectory_filename = trajectory_filename
-        self.trajectory_options = trajectory_options or {}
+        self.traj_report_interval = traj_report_interval
+        self.traj_filename = traj_filename
+        self.traj_options = traj_options or {}
         self.log_report_interval = log_report_interval
         self.log_filename = log_filename
         self.log_options = log_options or {}
@@ -104,21 +133,23 @@ class OpenMMPropagator(Propagator):
         )
         os.makedirs(output_dir)
 
-        # The final simulation state will be saved to 'endpoint_file'.
-        endpoint_file = os.path.join(output_dir, self.endpoint_filename)
-
-        # Set up trajectory and log reporters.
-        if self.trajectory_report_interval is not None:
-            trajectory_file = os.path.join(output_dir, self.trajectory_filename)
-            simulation.reporters.append(DCDReporter(trajectory_file, self.trajectory_report_interval, **self.trajectory_options))
+        # Set up the trajectory and log reporters.
+        if self.traj_report_interval is not None:
+            traj_file = os.path.join(output_dir, self.traj_filename)
+            simulation.reporters.append(DCDReporter(traj_file, self.traj_report_interval, **self.traj_options))
         if self.log_report_interval is not None:
             log_file = os.path.join(output_dir, self.log_filename)
             simulation.reporters.append(StateDataReporter(log_file, self.log_report_interval, **self.log_options))
 
         # Run the simulation and store the final state.
-        simulation.step(self.steps)
-        simulation.saveState(endpoint_file)
-        segment.endpoint = endpoint_file
+        try:
+            simulation.step(self.steps)
+        except openmm.OpenMMException as e:
+            segment.mark_as_failed(f'integration error: {e}')
+        else:
+            endpoint_file = os.path.join(output_dir, self.endpoint_filename)
+            simulation.saveState(endpoint_file)
+            segment.endpoint = endpoint_file
 
         return segment
 
