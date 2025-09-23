@@ -20,33 +20,17 @@ class Microstate:
     Parameters
     ----------
     identifier : Any
-        Unique identifier for the state. Must be
-        `JSON serializable <https://docs.python.org/3/library/json.html#json.JSONEncoder>`_.
+        JSON serializable object that identifies the state.
     probability : float, optional
-        Probability of observing the state.
+        Probability of observing the microstate.
     label : str, optional
         Descriptive label for the state.
     pcoord : array_like, optional
         Progress coordinate of the state.
+    auxref : str, optional
+        Reference to data associated with the state (usually a file system path).
     data : Mapping[str, array_like], optional
         Auxiliary data for the state.
-    auxref : str, optional
-        Reference to auxiliary data for the state.
-
-    Attributes
-    ----------
-    identifier : Any
-        Unique identifier for the state.
-    probability : float
-        Probability of observing the state.
-    label : str
-        Descriptive label for the state.
-    pcoord : ndarray
-        Progress coordinates of the state.
-    data : Mapping[str, ndarray]
-        Auxiliary data for the state.
-    auxref : str
-        Reference to auxiliary data for the state.
 
     """
 
@@ -57,26 +41,23 @@ class Microstate:
         probability=None,
         label=None,
         pcoord=None,
-        data=None,
         auxref=None,
+        data=None,
     ):
         try:
             json.dumps(identifier)
         except TypeError:
-            raise TypeError("'identifier' must be JSON serializable")
+            raise TypeError("'identifier' must be a JSON serializable object")
 
-        # read-only attributes
+        # read-only properties
         self._identifier = identifier
         self._data = AuxiliaryData(data or {})
 
-        # writable attributes
+        # writable properties
         self.probability = probability
-        self.label = label or ''
+        self.label = label
         self.pcoord = pcoord
-        self.auxref = auxref or ''
-
-        # internal index of the state, set by the data manager
-        self._state_id = None
+        self.auxref = auxref
 
     def __repr__(self):
         args = repr(self.identifier)
@@ -110,10 +91,12 @@ class Microstate:
 
     @label.setter
     def label(self, value):
-        if isinstance(value, str):
-            self._label = value
+        if value is None:
+            self._label = None
+        elif isinstance(value, bytes):
+            self._label = str(value, encoding='utf-8')
         else:
-            raise TypeError("'label' must be a string")
+            self._label = str(value)
 
     @property
     def pcoord(self):
@@ -133,24 +116,18 @@ class Microstate:
 
     @auxref.setter
     def auxref(self, value):
-        if isinstance(value, str):
+        if value is None:
+            self._auxref = None
+        elif isinstance(value, str):
             self._auxref = value
         else:
             raise TypeError("'auxref' must be a string")
 
-    @property
-    def state_id(self):
-        return self._state_id
-
-    @state_id.setter
-    def state_id(self, value):
-        self._state_id = value
-
 
 class BasisState(Microstate):
-    """A basis (micro)state. These basis states are used to generate initial
-    states for new trajectories, either at the beginning of the simulation
-    (e.g., at ``w_init``) or due to recycling.
+    """Describes a basis (micro)state. These basis states are used to generate
+    initial states for new trajectories, either at the beginning of the simulation
+    (i.e. at w_init) or due to recycling.
 
     Parameters
     ----------
@@ -167,23 +144,12 @@ class BasisState(Microstate):
         Integer identifier of the state, usually set by the data manager.
     data : Mapping[str, ArrayLike], optional
         Auxiliary data for the state.
-    identifier : Any, optional
-        Unique identifier for the state.
 
     """
 
-    def __init__(
-        self,
-        label,
-        probability,
-        pcoord=None,
-        auxref=None,
-        state_id=None,
-        data=None,
-        identifier=None,
-    ):
+    def __init__(self, label, probability, pcoord=None, auxref=None, state_id=None, data=None):
         super().__init__(
-            identifier,
+            state_id,
             probability=probability,
             label=label,
             pcoord=np.atleast_1d(pcoord),
@@ -326,8 +292,6 @@ class InitialState(Microstate):
         Representative progress coordinate of the state.
     data : Mapping[str, ArrayLike], optional
         Auxiliary data for the state.
-    identifier : Any
-        Unique identifier for the state.
 
     """
 
@@ -361,9 +325,8 @@ class InitialState(Microstate):
         basis_state=None,
         basis_auxref=None,
         data=None,
-        identifier=None,
     ):
-        super().__init__(identifier, pcoord=np.atleast_1d(pcoord), data=data)
+        super().__init__(state_id, pcoord=np.atleast_1d(pcoord), data=data)
         self.state_id = state_id
         self.basis_state_id = basis_state_id
         self.basis_state = basis_state

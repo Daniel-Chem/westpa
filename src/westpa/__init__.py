@@ -1,7 +1,6 @@
 __all__ = [
     'Segment',
     'WESTSystem',
-    'Microstate',
     'BasisState',
     'TargetState',
     '_rc',
@@ -21,7 +20,7 @@ __all__ = [
 ]
 
 from .core.segment import Segment
-from .core.states import Microstate, BasisState, TargetState
+from .core.states import BasisState, TargetState
 from .core.binning import (
     NOPBinMapper,
     FuncBinMapper,
