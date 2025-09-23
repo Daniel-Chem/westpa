@@ -20,8 +20,8 @@ class BasisState:
     Parameters
     ----------
     label : Any
-        String, bytes-like object, or JSON serializable object that identifies
-        the state.
+        JSON-serializable object that uniquely identifies the state. This object
+        can be retrieved via the :attr:`external_id` attribute.
     probability : float
         Probability of the state to be selected when creating a new trajectory.
     pcoord : ArrayLike, optional
@@ -52,27 +52,21 @@ class BasisState:
     @label.setter
     def label(self, value):
         if isinstance(value, bytes):
-            value = str(value, encoding='utf-8')
+            value = value.decode('utf-8')  # TODO: Document or remove this behavior.
         elif not isinstance(value, str):
             try:
                 value = json.dumps(value)
             except TypeError:
-                raise TypeError("'label' must be a string, bytes-like, or JSON serializable object")
+                raise TypeError("'label' must be JSON-serializable")
         self._label = value
 
     @property
     def external_id(self):
-        """Any : User-specified identifier for the state.
-
-        If :attr:`label` is a JSON string, :attr:`external_id` is the Python
-        object obtained by decoding :attr:`label`.
-        Otherwise, :attr:`external_id` is identical to :attr:`label`.
-
-        """
+        """Any : User-specified identifier for the state."""
         try:
-            return json.loads(self.label)
+            return json.loads(self._label)
         except json.JSONDecodeError:
-            return self.label
+            return self._label
 
     @property
     def probability(self):
@@ -283,7 +277,7 @@ class InitialState:
         try:
             json.dumps(value)
         except TypeError:
-            raise TypeError("'external_id' must be JSON serializable")
+            raise TypeError("'external_id' must be JSON-serializable")
         self._external_id = value
 
     def __repr__(self):
