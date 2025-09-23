@@ -5,6 +5,7 @@ import operator
 import numpy as np
 from numpy.random import Generator, MT19937
 
+from .binning import NOPBinMapper
 from .segment import Segment
 from .states import InitialState
 from .systems import WESTSystem
@@ -59,9 +60,10 @@ class NewWeightEntry:
 
 
 class WEDriver:
-    """Default driver for resampling and recycling trajectories.
+    """Built-in driver for resampling and recycling trajectories.
 
-    Implements the weighted ensemble algorithm of Huber & Kim. [1]_
+    Resampling is done according to a modified version of the weighted ensemble
+    algorithm of Huber & Kim. [1]_
 
     Parameters
     ----------
@@ -85,7 +87,7 @@ class WEDriver:
         Threshold for merging, in units of the "ideal weight".
     largest_allowed_weight : float, default 1.0
         Maximum allowed weight.
-    smallest_allowed_weight : float, default 1e-310
+    smallest_allowed_weight : float, default 1e-100
         Minimum allowed weight.
     thresholds : bool, default True
         Whether to ensure weights fall between `smallest_allowed_weight` and
@@ -93,23 +95,36 @@ class WEDriver:
     adjust_counts : bool, default True
         Whether to adjust counts to exactly match target counts.
 
-    Attributes
-    ----------
-    current_iter_segments : iterator of Segment
-    n_istates_needed : int
-    n_recycled_segs : int
-    next_iter_segments : iterator of Segment
-
     Methods
     -------
-    populate_initial
     new_iteration
     assign
+    populate_initial
     construct_next
 
     References
     ----------
-    .. [1] G.A. Huber, S. Kim, Biophysical Journal, Volume 70, Issue 1, 1996, Pages 97-110, ISSN 0006-3495, https://doi.org/10.1016/S0006-3495(96)79552-8.
+    .. [1] G.A. Huber, S. Kim, \
+    Biophysical Journal, Volume 70, Issue 1, 1996, Pages 97-110, ISSN 0006-3495, https://doi.org/10.1016/S0006-3495(96)79552-8.
+    .. [2] P.A. Torrillo, A.T. Bogetti, L.T. Chong, \
+    The Journal of Physical Chemistry A, Volume 125, Issue 7, 2021, Pages 1642-1649, https://doi.org/10.1021/acs.jpca.0c10724.
+
+    Examples
+    --------
+    Single trajectory, no binning (default behavior):
+
+    >>> import westpa
+    >>> westpa.WEDriver()
+    ...
+    <WEDriver at 0x10d9886b0 with bin_mapper=<NOPBinMapper at 0x10e0b3770 with 1 bins>, bin_target_counts=1>
+
+    Minimal adaptive binning [2]_ along a 1-D progress coordinate:
+
+    >>> westpa.WEDriver(
+    ...     bin_mapper=westpa.MABBinMapper(nbins=[10]),
+    ...     bin_target_counts=5,
+    ... )
+    <WEDriver at 0x120329610 with bin_mapper=<MABBinMapper at 0x1203297f0 with 14 bins>, bin_target_counts=5>
 
     """
 
@@ -148,7 +163,7 @@ class WEDriver:
         weight_split_threshold=2.0,
         weight_merge_cutoff=1.0,
         largest_allowed_weight=1.0,
-        smallest_allowed_weight=1e-310,
+        smallest_allowed_weight=1e-100,
         thresholds=True,
         adjust_counts=True,
     ):
@@ -198,8 +213,7 @@ class WEDriver:
         self.system.pcoord_ndim = pcoord_ndim
         self.system.pcoord_len = pcoord_len
         self.system.pcoord_dtype = np.dtype(pcoord_dtype)
-        if bin_mapper is not None:
-            self._update_bins(bin_mapper, bin_target_counts)
+        self._update_bins(bin_mapper, bin_target_counts)
 
         self.weight_split_threshold = weight_split_threshold
         self.weight_merge_cutoff = weight_merge_cutoff
@@ -211,6 +225,7 @@ class WEDriver:
         self.check_threshold_configs()
 
     def _update_bins(self, bin_mapper, bin_target_counts):
+        bin_mapper = bin_mapper if bin_mapper is not None else NOPBinMapper()
         if isinstance(bin_target_counts, int):
             bin_target_counts = np.repeat(bin_target_counts, bin_mapper.nbins)
         else:
