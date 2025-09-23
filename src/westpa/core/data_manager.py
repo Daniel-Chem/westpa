@@ -43,6 +43,7 @@ Version history:
         - added in-HDF5 storage for basis states, target states, and generated states
 """
 
+import json
 import logging
 import pickle
 import posixpath
@@ -146,6 +147,8 @@ seg_index_dtype = np.dtype(
         ('walltime', utime_dtype),  # Wallclock time used in propagating this segment
         ('endpoint_type', seg_endpoint_dtype),  # Endpoint type (will continue, merged, or recycled)
         ('status', seg_status_dtype),  # Status of propagation of this segment
+        ('initpoint', vstr_dtype),
+        ('endpoint', vstr_dtype),
     ]
 )
 
@@ -857,6 +860,8 @@ class WESTDataManager:
                 # Parent must be set, though what it means depends on initpoint_type
                 assert segment.parent_id is not None
                 segment.seg_id = seg_id
+                seg_index_table[seg_id]['initpoint'] = json.dumps(segment.initpoint)
+                seg_index_table[seg_id]['endpoint'] = json.dumps(segment.endpoint)
                 seg_index_table[seg_id]['status'] = segment.status
                 seg_index_table[seg_id]['weight'] = segment.weight
                 seg_index_table[seg_id]['parent_id'] = segment.parent_id
@@ -987,6 +992,8 @@ class WESTDataManager:
                 ientry['cputime'] = segment.cputime
                 ientry['walltime'] = segment.walltime
                 ientry['weight'] = segment.weight
+                ientry['initpoint'] = json.dumps(segment.initpoint)
+                ientry['endpoint'] = json.dumps(segment.endpoint)
 
                 pcoord_entries[iseg] = segment.pcoord
 
@@ -1091,6 +1098,8 @@ class WESTDataManager:
                     walltime=float(row['walltime']),
                     cputime=float(row['cputime']),
                     weight=float(row['weight']),
+                    initpoint=json.loads(h5io.tostr(row['initpoint'])),
+                    endpoint=json.loads(h5io.tostr(row['endpoint'])),
                 )
 
                 if load_pcoords:
