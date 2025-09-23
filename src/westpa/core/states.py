@@ -12,54 +12,7 @@ from ._dtypes import (
 from westpa.core.segment import Segment
 
 
-class Microstate:
-    """A microstate of the system being simulated.
-
-    Parameters
-    ----------
-    identifier : Any
-        JSON serializable object that identifies the state.
-    probability : float, optional
-        Probability of observing the microstate.
-    label : str, optional
-        Descriptive label for the state.
-
-    """
-
-    def __init__(self, identifier, *, probability=None, label=None):
-        try:
-            self._identifier = json.dumps(identifier)
-        except TypeError:
-            raise TypeError("'identifier' must be a JSON serializable object")
-        if probability is not None:
-            self.probability = probability
-        if label is not None:
-            self.label = label
-
-    @property
-    def identifier(self):
-        return self._identifier
-
-    @property
-    def probability(self):
-        return self._probability
-
-    @probability.setter
-    def probability(self, value):
-        if not (0 <= value <= 1):
-            raise ValueError("'probability' must be between 0 and 1")
-        self._probability = float(value)
-
-    @property
-    def label(self):
-        return self._label
-
-    @label.setter
-    def label(self, value):
-        self._label = str(value, encoding='utf-8') if isinstance(value, bytes) else str(value)
-
-
-class BasisState(Microstate):
+class BasisState:
     """Describes a basis (micro)state. These basis states are used to generate
     initial states for new trajectories, either at the beginning of the simulation
     (i.e. at w_init) or due to recycling.
@@ -67,7 +20,8 @@ class BasisState(Microstate):
     Parameters
     ----------
     label : Any
-        Descriptive label for the state.
+        String, bytes-like object, or JSON serializable object that identifies
+        the state.
     probability : float
         Probability of the state to be selected when creating a new trajectory.
     pcoord : ArrayLike, optional
@@ -83,16 +37,64 @@ class BasisState(Microstate):
     """
 
     def __init__(self, label, probability, pcoord=None, auxref=None, state_id=None, data=None):
-        super().__init__(state_id, probability=probability, label=label)
+        self.label = label
+        self.probability = probability
         self.pcoord = np.atleast_1d(pcoord)
         self.auxref = auxref
         self.state_id = state_id
         self.data = data or {}
 
+    @property
+    def label(self):
+        """str : String label for the state."""
+        return self._label
+
+    @label.setter
+    def label(self, value):
+        if isinstance(value, bytes):
+            value = str(value, encoding='utf-8')
+        elif not isinstance(value, str):
+            try:
+                value = json.dumps(value)
+            except TypeError:
+                raise TypeError("'label' must be a string, bytes-like, or JSON serializable object")
+        self._label = value
+
+    @property
+    def external_id(self):
+        """Any : User-specified identifier for the state.
+
+        If :attr:`label` is a JSON string, :attr:`external_id` is the Python
+        object obtained by decoding :attr:`label`.
+        Otherwise, :attr:`external_id` is identical to :attr:`label`.
+
+        """
+        try:
+            return json.loads(self.label)
+        except json.JSONDecodeError:
+            return self.label
+
+    @property
+    def probability(self):
+        """float : Probability of the state."""
+        return self._probability
+
+    @probability.setter
+    def probability(self, value):
+        value = float(value)
+        if not (0 <= value <= 1):
+            raise ValueError("'probability' must be between 0 and 1")
+        self._probability = value
+
     def __repr__(self):
-        return '{} state_id={self.state_id!s} label={self.label!s} prob={self.probability!s} pcoord={self.pcoord!s}>'.format(
-            object.__repr__(self)[:-1], self=self
-        )
+        kwargs = []
+        for name in ('probability', 'pcoord', 'auxref', 'state_id', 'data'):
+            value = getattr(self, name)
+            if name == 'pcoord':
+                value = value.tolist()
+            kwargs.append(f'{name}={value!r}')
+        kwargs = ', '.join(kwargs)
+        return f'{type(self).__name__}({self.external_id!r}, {kwargs})'
 
     @classmethod
     def states_to_file(cls, states, fileobj):
@@ -194,7 +196,7 @@ class BasisState(Microstate):
         return bstaterec
 
 
-class InitialState(Microstate):
+class InitialState:
     """Describes an initial state for a new trajectory. These are generally
     constructed by appropriate modification of a basis state.
 
@@ -223,6 +225,8 @@ class InitialState(Microstate):
         Representative progress coordinate of the state.
     data : Mapping[str, ArrayLike], optional
         Auxiliary data for the state.
+    external_id : Any, optional
+        User-specified identifier for the state.
 
     """
 
@@ -256,8 +260,8 @@ class InitialState(Microstate):
         basis_state=None,
         basis_auxref=None,
         data=None,
+        external_id=None,
     ):
-        super().__init__(state_id)
         self.state_id = state_id
         self.basis_state_id = basis_state_id
         self.basis_state = basis_state
@@ -268,6 +272,19 @@ class InitialState(Microstate):
         self.pcoord = np.atleast_1d(pcoord)
         self.basis_auxref = basis_auxref
         self.data = data or {}
+        self._external_id = external_id
+
+    @property
+    def external_id(self):
+        return self._external_id
+
+    @external_id.setter
+    def external_id(self, value):
+        try:
+            json.dumps(value)
+        except TypeError:
+            raise TypeError("'external_id' must be JSON serializable")
+        self._external_id = value
 
     def __repr__(self):
         return '{} state_id={self.state_id!s} istate_type={self.istate_type!s} basis_state_id={self.basis_state_id!s} iter_created={self.iter_created!s} pcoord={self.pcoord!s}>'.format(
