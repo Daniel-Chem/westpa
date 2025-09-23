@@ -23,7 +23,7 @@ __all__ = [
 from .core.segment import Segment
 from .core.states import Microstate, BasisState, TargetState
 from .core.binning import (
-    NopMapper as NOPBinMapper,
+    NOPBinMapper,
     FuncBinMapper,
     PiecewiseBinMapper,
     RectilinearBinMapper,

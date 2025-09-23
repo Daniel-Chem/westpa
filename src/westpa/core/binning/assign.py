@@ -111,6 +111,10 @@ class NopMapper(BinMapper):
         output[mask] = 0
 
 
+class NOPBinMapper(NopMapper):
+    pass
+
+
 class RectilinearBinMapper(BinMapper):
     '''Bin into a rectangular grid based on tuples of float values'''
 
