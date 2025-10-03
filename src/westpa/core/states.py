@@ -1,10 +1,17 @@
 import numpy as np
 
+from ._dtypes import (
+    vstr_dtype,
+    weight_dtype,
+    seg_id_dtype,
+    istate_type_dtype,
+    istate_status_dtype,
+)
 from westpa.core.segment import Segment
 
 
 class BasisState:
-    '''Describes an basis (micro)state. These basis states are used to generate
+    """Describes a basis (micro)state. These basis states are used to generate
     initial states for new trajectories, either at the beginning of the simulation
     (i.e. at w_init) or due to recycling.
 
@@ -17,7 +24,7 @@ class BasisState:
 
     :ivar auxref:       A user-provided (string) reference for locating data associated
                         with this state (usually a filesystem path).
-    '''
+    """
 
     def __init__(self, label, probability, pcoord=None, auxref=None, state_id=None):
         self.label = str(label, encoding="UTF-8") if isinstance(label, bytes) else label
@@ -34,8 +41,7 @@ class BasisState:
 
     @classmethod
     def states_to_file(cls, states, fileobj):
-        '''Write a file defining basis states, which may then be read by `states_from_file()`.'''
-
+        """Write a file defining basis states, which may then be read by `states_from_file()`."""
         if isinstance(fileobj, str):
             fileobj = open(fileobj, 'wt')
 
@@ -67,8 +73,9 @@ class BasisState:
 
     @classmethod
     def states_from_file(cls, statefile):
-        '''Read a file defining basis states.  Each line defines a state, and contains a label, the probability,
-        and optionally a data reference, separated by whitespace, as in::
+        """Read a file defining basis states. Each line defines a state, and
+        contains a label, the probability, and optionally a data reference,
+        separated by whitespace, as in::
 
             unbound    1.0
 
@@ -77,7 +84,7 @@ class BasisState:
             unbound_0    0.6        state0.pdb
             unbound_1    0.4        state1.pdb
 
-        '''
+        """
         states = []
         lineno = 0
 
@@ -116,10 +123,7 @@ class BasisState:
         return states
 
     def as_numpy_record(self):
-        '''Return the data for this state as a numpy record array.'''
-
-        from westpa.core.data_manager import vstr_dtype, weight_dtype, seg_id_dtype
-
+        """Return the data for this state as a numpy record array."""
         bstate_dtype = np.dtype(
             [
                 ('state_id', seg_id_dtype),
@@ -136,28 +140,38 @@ class BasisState:
 
 
 class InitialState:
-    '''Describes an initial state for a new trajectory. These are generally constructed by
-    appropriate modification of a basis state.
+    """Describes an initial state for a new trajectory. These are generally
+    constructed by appropriate modification of a basis state.
 
-    :ivar state_id:         Integer identifier of this state, usually set by the
-                            data manager.
-    :ivar basis_state_id:   Identifier of the basis state from which this state was
-                            generated, or None.
-    :ivar basis_state:      The `BasisState` from which this state was generated, or None.
-    :ivar iter_created:     Iteration in which this state was generated (0 for
-                            simulation initialization).
-    :ivar iter_used:        Iteration in which this state was used to initiate a
-                            trajectory (None for unused).
-    :ivar istate_type:      Integer describing the type of this initial state
-                            (ISTATE_TYPE_BASIS for direct use of a basis state,
-                            ISTATE_TYPE_GENERATED for a state generated from a basis state,
-                            ISTATE_TYPE_RESTART for a state corresponding to the endpoint
-                            of a segment in another simulation, or
-                            ISTATE_TYPE_START for a state generated from a start state).
-    :ivar istate_status:    Integer describing whether this initial state has been properly
-                            prepared.
-    :ivar pcoord:           The representative progress coordinate of this state.
-    '''
+    Parameters
+    ----------
+    state_id : int
+        Integer identifier of the state, usually set by the data manager.
+    basis_state_id : int | None
+        Identifier of the basis state from which the state was generated, or None.
+    basis_state : BasisState | None
+         Basis state from which the state was generated, or None.
+    iter_created : int, optional
+        Iteration in which the state was generated (0 for simulation initialization).
+    iter_used : int, optional
+        Iteration in which the state was used to initiate a trajectory (None for unused).
+    istate_type : int, optional
+        Integer describing the type of the initial state
+        (ISTATE_TYPE_BASIS for direct use of a basis state,
+        ISTATE_TYPE_GENERATED for a state generated from a basis state,
+        ISTATE_TYPE_RESTART for a state corresponding to the endpoint
+        of a segment in another simulation, or
+        ISTATE_TYPE_START for a state generated from a start state).
+    istate_status : int, optional
+        Integer describing whether the initial state has been properly prepared.
+    pcoord : ArrayLike, optional
+        Representative progress coordinate of the state.
+    data : Mapping[str, ArrayLike], optional
+        Auxiliary data for the state.
+    external_id : Any, optional
+        User-specified identifier for the state.
+
+    """
 
     ISTATE_TYPE_UNSET = 0
     ISTATE_TYPE_BASIS = 1
@@ -206,8 +220,6 @@ class InitialState:
         )
 
     def as_numpy_record(self):
-        from westpa.core.data_manager import seg_id_dtype, istate_type_dtype, istate_status_dtype, vstr_dtype
-
         istate_dtype = np.dtype(
             [
                 ('state_id', seg_id_dtype),
@@ -248,14 +260,18 @@ InitialState.istate_type_names.update({istate_type: name for name, istate_type i
 
 
 class TargetState:
-    '''Describes a target state.
+    """Describes a target state.
 
-    :ivar state_id:     Integer identifier of this state, usually set by the
-                        data manager.
-    :ivar label:        A descriptive label for this microstate (may be empty)
-    :ivar pcoord: The representative progress coordinate of this state.
+    Parameters
+    ----------
+    label : str
+        Descriptive label for the target state.
+    pcoord : ArrayLike
+        Representative progress coordinate of the state.
+    state_id : int, optional
+        Integer identifier of the state, usually set by the data manager.
 
-    '''
+    """
 
     def __init__(self, label, pcoord, state_id=None):
         self.label = label
@@ -269,8 +285,7 @@ class TargetState:
 
     @classmethod
     def states_to_file(cls, states, fileobj):
-        '''Write a file defining basis states, which may then be read by `states_from_file()`.'''
-
+        """Write a file defining basis states, which may then be read by `states_from_file()`."""
         if isinstance(fileobj, str):
             fileobj = open(fileobj, 'wt')
 
@@ -283,8 +298,9 @@ class TargetState:
 
     @classmethod
     def states_from_file(cls, statefile, dtype):
-        '''Read a file defining target states.  Each line defines a state, and contains a label followed
-        by a representative progress coordinate value, separated by whitespace, as in::
+        """Read a file defining target states.  Each line defines a state,
+        and contains a label followed by a representative progress coordinate
+        value, separated by whitespace, as in::
 
             bound     0.02
 
@@ -294,8 +310,8 @@ class TargetState:
             drift    100    50.0
 
         for two targets and a two-dimensional progress coordinate.
-        '''
 
+        """
         labels = []
         pcoord_values = []
 
@@ -322,10 +338,9 @@ class TargetState:
 
 
 def pare_basis_initial_states(basis_states, initial_states, segments=None):
-    '''Given iterables of basis and initial states (and optionally segments that use them),
+    """Given iterables of basis and initial states (and optionally segments that use them),
     return minimal sets (as in __builtins__.set) of states needed to describe the history of the given
-    segments an initial states.'''
-
+    segments an initial states."""
     bstatemap = {state.state_id: state for state in basis_states}
     istatemap = {state.state_id: state for state in initial_states}
 
@@ -347,8 +362,7 @@ def pare_basis_initial_states(basis_states, initial_states, segments=None):
 
 
 def return_state_type(state_obj):
-    '''Convinience function for returning the state ID and type of the state_obj pointer'''
-
+    """Convenience function for returning the state ID and type of the `state_obj` pointer."""
     if isinstance(state_obj, Segment):
         return type(state_obj).__name__, state_obj.seg_id
     elif isinstance(state_obj, InitialState):
