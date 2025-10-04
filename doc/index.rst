@@ -1,8 +1,9 @@
 WESTPA reference
 ================
 
+**Version:** 2026.0.0a0
+
 .. toctree::
    :maxdepth: 2
 
-    Command Line Interface <documentation/cli>
-    Python API <python_api/index>
+   Python API <python_api/index>

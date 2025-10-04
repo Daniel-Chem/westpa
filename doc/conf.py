@@ -52,16 +52,16 @@ release = version
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autosummary',
     'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon',
+    'sphinx.ext.autosummary',
     'sphinx.ext.coverage',
+    'numpydoc',
 ]
 
 autosummary_generate = False
-autoclass_content = "both"
+# autoclass_content = "both"
 autodoc_member_order = "bysource"
-autodoc_default_flags = ["members", "undoc-members", "show-inheritence", "imported-members"]
+# autodoc_default_flags = ["members", "undoc-members", "show-inheritence", "imported-members"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
