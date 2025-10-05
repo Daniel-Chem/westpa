@@ -1,5 +1,5 @@
-WESTPA Python API
-=================
+Python API
+==========
 
 WESTPA's Python API provides facilities for setting up, running, and
 analyzing weighted ensemble (WE) simulations from Python programs.
