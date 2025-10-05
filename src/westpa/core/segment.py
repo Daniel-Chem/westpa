@@ -136,6 +136,12 @@ class Segment:
         """Iteration in which the segment was created."""
         return self._n_iter
 
+    @n_iter.setter
+    def n_iter(self, value):
+        if not isinstance(value, int):
+            raise TypeError("'n_iter' must be an integer")
+        self._n_iter = value
+
     @property
     def seg_id(self):
         """Index of the segment (0-based)."""
@@ -153,6 +159,12 @@ class Segment:
     def parent_id(self):
         """Index of the segment's parent."""
         return self._parent_id
+
+    @parent_id.setter
+    def parent_id(self, value):
+        if not isinstance(value, int):
+            raise TypeError("'parent_id' must be an integer")
+        self._parent_id = value
 
     @property
     def wtg_parent_ids(self):
