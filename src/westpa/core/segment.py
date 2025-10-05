@@ -9,44 +9,59 @@ from ._auxdata import AuxiliaryData
 
 
 class Segment:
-    """Represents a trajectory segment.
+    """Describes a trajectory segment.
+
+    :class:`Segment` objects should only be created directly for testing purposes.
 
     Attributes
     ----------
-    weight : float
-    initpoint : Any
-    endpoint : Any
-    pcoord : ndarray or None
+    weight : float, optional
+    initpoint : `JSON encodable <https://docs.python.org/3/library/json.html#py-to-json-table>`_ object
+    endpoint : `JSON encodable <https://docs.python.org/3/library/json.html#py-to-json-table>`_ object
+    pcoord : ndarray, optional
     data : MutableMapping[str, ndarray]
-    complete : bool
-    failed : bool
-    failure_reason : str or None
     walltime : float
     cputime : float
-    n_iter : int
-    seg_id : int
-    parent_id : int
+    n_iter : int, optional
+    seg_id : int, optional
+    parent_id : int, optional
     wtg_parent_ids : set of int
     initpoint_type : :class:`InitPointType`
     endpoint_type : :class:`EndPointType`
+    status : :class:`Status`
+    failure_reason : str, optional
 
     """
 
-    SEG_STATUS_UNSET = 0
-    SEG_STATUS_PREPARED = 1
-    SEG_STATUS_COMPLETE = 2
-    SEG_STATUS_FAILED = 3
+    class Status(enum.IntEnum):
+        """Integer code indicating a segment's propagation status."""
+
+        UNSET = 0  #: Null value.
+        PREPARED = 1  #: Indicates that a segment is prepared for propagation.
+        COMPLETE = 2  #: Indicates that propagation completed successfully.
+        FAILED = 3  #: Indicates that propagation failed.
 
     class InitPointType(enum.IntEnum):
+        """Integer code indicating a segment's origin."""
+
+        UNSET = 0  #: Null value.
         CONTINUES = 1  #: Indicates that a segment continues an existing trajectory.
         NEWTRAJ = 2  #: Indicates that a segment begins a new trajectory.
 
     class EndPointType(enum.IntEnum):
-        UNSET = 0  #: Indicates that a segment has not yet been resampled.
+        """Integer code indicating a segment's fate."""
+
+        UNSET = 0  #: Null value.
         CONTINUES = 1  #: Indicates that a segment survived resampling.
         MERGED = 2  #: Indicates that a segment was pruned during resampling.
         RECYCLED = 3  #: Indicates that a segment was recycled because it reached the sink (target) state.
 
+    SEG_STATUS_UNSET = Status.UNSET
+    SEG_STATUS_PREPARED = Status.PREPARED
+    SEG_STATUS_COMPLETE = Status.COMPLETE
+    SEG_STATUS_FAILED = Status.FAILED
+
+    SEG_INITPOINT_UNSET = InitPointType.UNSET
     SEG_INITPOINT_CONTINUES = InitPointType.CONTINUES
     SEG_INITPOINT_NEWTRAJ = InitPointType.NEWTRAJ
 
@@ -100,9 +115,9 @@ class Segment:
         # calling __str__() on them.  Not sure if this is a numpy, h5py, or python problem
         self._n_iter = int(n_iter) if n_iter is not None else None
         self._seg_id = int(seg_id) if seg_id is not None else None
-        self.status = int(status) if status is not None else None
+        self._status = Segment.Status(status) if status else Segment.Status.UNSET
         self._parent_id = int(parent_id) if parent_id is not None else None
-        self._endpoint_type = int(endpoint_type) if endpoint_type else self.SEG_ENDPOINT_UNSET
+        self._endpoint_type = Segment.EndPointType(endpoint_type) if endpoint_type else Segment.EndPointType.UNSET
 
         self._weight = float(weight) if weight is not None else None
         self._wtg_parent_ids = set(wtg_parent_ids or ())
@@ -123,8 +138,16 @@ class Segment:
 
     @property
     def seg_id(self):
-        """Integer index (0-based)."""
+        """Index of the segment (0-based)."""
         return self._seg_id
+
+    @seg_id.setter
+    def seg_id(self, value):
+        if not isinstance(value, int):
+            raise TypeError("'seg_id' must be an integer")
+        if value < 0:
+            raise TypeError("'seg_id' must be non-negative")
+        self._seg_id = value
 
     @property
     def parent_id(self):
@@ -136,6 +159,13 @@ class Segment:
         """Indices of the walkers that contributed weight to the segment."""
         return self._wtg_parent_ids
 
+    @wtg_parent_ids.setter
+    def wtg_parent_ids(self, value):
+        value = set(value)
+        if not all(isinstance(item, int) for item in value):
+            raise TypeError("items in 'wtg_parent_ids' must be integers")
+        self._wtg_parent_ids = value
+
     @property
     def initpoint(self):
         """Initial microstate."""
@@ -143,13 +173,7 @@ class Segment:
 
     @property
     def endpoint(self):
-        """Final microstate (set by the propagator).
-
-        The value of :attr:`endpoint` must be a
-        `JSON encodable <https://docs.python.org/3/library/json.html#json.JSONEncoder>`_
-        object. Setting this attribute will mark the segment as complete.
-
-        """
+        """Final microstate (set by the propagator). Setting ``endpoint`` marks the segment as complete."""
         return self._endpoint
 
     @endpoint.setter
@@ -159,7 +183,7 @@ class Segment:
         except TypeError:
             raise TypeError("'endpoint' must be a JSON encodable object")
         self._endpoint = value
-        self.status = Segment.SEG_STATUS_COMPLETE
+        self.status = Segment.Status.COMPLETE
 
     @property
     def weight(self):
@@ -204,18 +228,8 @@ class Segment:
         """
         if not isinstance(reason, str):
             raise TypeError("'reason' must be a string")
-        self.status = Segment.SEG_STATUS_FAILED
+        self.status = Segment.Status.FAILED
         self._failure_reason = reason
-
-    @property
-    def complete(self):
-        """True if propagation completed successfully, False otherwise."""
-        return self.status == Segment.SEG_STATUS_COMPLETE
-
-    @property
-    def failed(self):
-        """True if propagation failed, False otherwise."""
-        return self.status == Segment.SEG_STATUS_FAILED
 
     @property
     def failure_reason(self):
@@ -224,7 +238,7 @@ class Segment:
 
     @property
     def walltime(self):
-        """Wall-clock time taken to propagate the segment (zero by default)."""
+        """Wall-clock time taken for propagation (zero by default)."""
         return self._walltime
 
     @walltime.setter
@@ -236,7 +250,7 @@ class Segment:
 
     @property
     def cputime(self):
-        """Process time taken to propagate the segment (zero by default)."""
+        """Process time taken for propagation (zero by default)."""
         return self._cputime
 
     @cputime.setter
@@ -253,16 +267,31 @@ class Segment:
     @property
     def initpoint_type(self):
         """Whether the segment begins a new trajectory or continues an existing one."""
-        if self.parent_id < 0:
-            return Segment.SEG_INITPOINT_NEWTRAJ
+        if self.parent_id is None:
+            return Segment.InitPointType.UNSET
+        elif self.parent_id < 0:
+            return Segment.InitPointType.NEWTRAJ
         else:
-            return Segment.SEG_INITPOINT_CONTINUES
+            return Segment.InitPointType.CONTINUES
 
     @property
     def endpoint_type(self):
         """Whether the segment survived to the next iteration, was merged away during
         resampling, or was recycled because it reached the sink (target) state."""
         return self._endpoint_type
+
+    @endpoint_type.setter
+    def endpoint_type(self, value):
+        self._endpoint_type = Segment.EndPointType(value)
+
+    @property
+    def status(self):
+        """Propagation status."""
+        return self._status
+
+    @status.setter
+    def status(self, value):
+        self._status = Segment.Status(value)
 
     @property
     def initial_state_id(self):
