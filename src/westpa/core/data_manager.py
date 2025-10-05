@@ -61,6 +61,7 @@ import numpy as np
 from . import h5io
 from .segment import Segment
 from .states import BasisState, TargetState, InitialState
+from .systems import WESTSystem
 from .we_driver import NewWeightEntry
 from .propagators.executable import ExecutablePropagator
 from ._dtypes import (
@@ -201,7 +202,7 @@ binning_index_dtype = np.dtype([('hash', binhash_dtype), ('pickle_len', np.uint3
 
 
 class WESTDataManager:
-    """Data manager for assisiting the reading and writing of WEST data from/to HDF5 files."""
+    """Data manager for assisting the reading and writing of WEST data from/to HDF5 files."""
 
     # defaults for various options
     default_iter_prec = 8
@@ -278,7 +279,7 @@ class WESTDataManager:
             self.system = rc.get_system_driver()
             self.process_config()
         else:
-            self.system = system
+            self.system = system or WESTSystem()
             self.we_h5filename = we_h5filename
             self.we_h5file_driver = we_h5file_driver
             self.iter_prec = iter_prec
