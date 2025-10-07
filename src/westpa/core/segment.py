@@ -1,6 +1,5 @@
 import enum
 import inspect
-import json
 import math
 
 import numpy as np
@@ -15,16 +14,16 @@ class Segment:
 
     Attributes
     ----------
-    weight : float, optional
-    initpoint : `JSON encodable <https://docs.python.org/3/library/json.html#py-to-json-table>`_ object
-    endpoint : `JSON encodable <https://docs.python.org/3/library/json.html#py-to-json-table>`_ object
+    weight : float
+    initpoint : numpy.ndarray or str
+    endpoint : numpy.ndarray or str, optional
     pcoord : numpy.ndarray, optional
     data : MutableMapping[str, numpy.ndarray]
     walltime : float
     cputime : float
-    n_iter : int, optional
-    seg_id : int, optional
-    parent_id : int, optional
+    n_iter : int
+    seg_id : int
+    parent_id : int
     wtg_parent_ids : set of int
     initpoint_type : :class:`InitPointType`
     endpoint_type : :class:`EndPointType`
@@ -52,7 +51,7 @@ class Segment:
         """Integer code indicating a segment's fate."""
 
         UNSET = 0  #: Null value.
-        CONTINUES = 1  #: Indicates that a segment survived resampling.
+        CONTINUES = 1  #: Indicates that a segment survived resampling (and recycling).
         MERGED = 2  #: Indicates that a segment was pruned during resampling.
         RECYCLED = 3  #: Indicates that a segment was recycled because it reached the sink (target) state.
 
@@ -190,10 +189,10 @@ class Segment:
 
     @endpoint.setter
     def endpoint(self, value):
-        try:
-            json.dumps(value)
-        except TypeError:
-            raise TypeError("'endpoint' must be a JSON encodable object")
+        if not isinstance(value, str):
+            value = np.asarray(value)
+            if not np.issubdtype(value.dtype, np.number):
+                raise TypeError("scalar type of 'endpoint' must be numeric")
         self._endpoint = value
         self.status = Segment.Status.COMPLETE
 
@@ -216,12 +215,11 @@ class Segment:
 
     @pcoord.setter
     def pcoord(self, value):
-        if value is not None:
-            value = np.asarray(value)
-            if not np.issubdtype(value.dtype, np.number):
-                raise TypeError("scalar type of 'pcoord' must be numeric")
-            if value.ndim != 2:
-                raise ValueError("'pcoord' must be a 2-D array")
+        value = np.asarray(value)
+        if not np.issubdtype(value.dtype, np.number):
+            raise TypeError("scalar type of 'pcoord' must be numeric")
+        if value.ndim != 2:
+            raise ValueError("'pcoord' must be a 2-D array")
         self._pcoord = value
 
     @property
@@ -326,10 +324,10 @@ class Segment:
 
         """
         d = {}
+
         for name in inspect.signature(self.__init__).parameters:
             if (value := getattr(self, name)) is None:
                 continue
-
             if name in ('walltime', 'cputime') and value == 0.0:
                 continue
             if name in ('data', 'wtg_parent_ids') and len(value) == 0:
@@ -340,6 +338,11 @@ class Segment:
                 continue
 
             match name:
+                case 'initpoint' | 'endpoint':
+                    if isinstance(value, str):
+                        d[name] = value
+                    else:
+                        d[name] = value.tolist()
                 case 'pcoord':
                     d[name] = value.tolist()
                 case 'data':
@@ -348,6 +351,7 @@ class Segment:
                     d[name] = list(value)
                 case _:
                     d[name] = value
+
         return d
 
     @classmethod
@@ -367,6 +371,11 @@ class Segment:
         kwargs = {}
         for name, value in d.items():
             match name:
+                case 'initpoint' | 'endpoint':
+                    if isinstance(value, str):
+                        kwargs[name] = value
+                    else:
+                        kwargs[name] = np.asarray(value)
                 case 'pcoord':
                     kwargs[name] = np.asarray(value)
                 case 'data':
