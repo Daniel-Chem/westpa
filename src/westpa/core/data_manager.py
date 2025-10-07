@@ -43,7 +43,6 @@ Version history:
         - added in-HDF5 storage for basis states, target states, and generated states
 """
 
-import json
 import logging
 import pickle
 import posixpath
@@ -61,21 +60,8 @@ import numpy as np
 from . import h5io
 from .segment import Segment
 from .states import BasisState, TargetState, InitialState
-from .systems import WESTSystem
 from .we_driver import NewWeightEntry
 from .propagators.executable import ExecutablePropagator
-from ._dtypes import (
-    seg_id_dtype,
-    weight_dtype,
-    utime_dtype,
-    vstr_dtype,
-    h5ref_dtype,
-    binhash_dtype,
-    seg_status_dtype,
-    seg_endpoint_dtype,
-    istate_type_dtype,
-    istate_status_dtype,
-)
 
 import westpa
 
@@ -115,6 +101,27 @@ class expiring_flushing_lock:
         self.lock.release()
 
 
+# Data types for use in the HDF5 file
+seg_id_dtype = np.int64  # Up to 9 quintillion segments per iteration; signed so that initial states can be stored negative
+n_iter_dtype = np.uint32  # Up to 4 billion iterations
+weight_dtype = np.float64  # about 15 digits of precision in weights
+utime_dtype = np.float64  # ("u" for Unix time) Up to ~10^300 cpu-seconds
+vstr_dtype = h5py.special_dtype(vlen=str)
+h5ref_dtype = h5py.special_dtype(ref=h5py.Reference)
+binhash_dtype = np.dtype('|S64')
+
+# seg_status_dtype    = h5py.special_dtype(enum=(np.uint8, Segment.statuses))
+# seg_initpoint_dtype = h5py.special_dtype(enum=(np.uint8, Segment.initpoint_types))
+# seg_endpoint_dtype  = h5py.special_dtype(enum=(np.uint8, Segment.endpoint_types))
+# istate_type_dtype   = h5py.special_dtype(enum=(np.uint8, InitialState.istate_types))
+# istate_status_dtype = h5py.special_dtype(enum=(np.uint8, InitialState.istate_statuses))
+
+seg_status_dtype = np.uint8
+seg_initpoint_dtype = np.uint8
+seg_endpoint_dtype = np.uint8
+istate_type_dtype = np.uint8
+istate_status_dtype = np.uint8
+
 summary_table_dtype = np.dtype(
     [
         ('n_particles', seg_id_dtype),  # Number of live trajectories in this iteration
@@ -148,8 +155,6 @@ seg_index_dtype = np.dtype(
         ('walltime', utime_dtype),  # Wallclock time used in propagating this segment
         ('endpoint_type', seg_endpoint_dtype),  # Endpoint type (will continue, merged, or recycled)
         ('status', seg_status_dtype),  # Status of propagation of this segment
-        ('initpoint', vstr_dtype),
-        ('endpoint', vstr_dtype),
     ]
 )
 
@@ -202,7 +207,7 @@ binning_index_dtype = np.dtype([('hash', binhash_dtype), ('pickle_len', np.uint3
 
 
 class WESTDataManager:
-    """Data manager for assisting the reading and writing of WEST data from/to HDF5 files."""
+    """Data manager for assisiting the reading and writing of WEST data from/to HDF5 files."""
 
     # defaults for various options
     default_iter_prec = 8
@@ -260,40 +265,38 @@ class WESTDataManager:
             if self.dataset_options['pcoord']['h5path'] != 'pcoord':
                 raise ValueError('cannot override pcoord storage location')
 
-    def __init__(
-        self,
-        rc=None,
-        *,
-        system=None,
-        we_h5filename='west.h5',
-        we_h5file_driver=None,
-        iter_prec=8,
-        aux_compression_threshold=1048576,
-        flush_period=60,
-        iter_h5file_ref_template=None,
-    ):
-        self.dataset_options = {}
+    def __init__(self, rc=None):
+        self.rc = rc or westpa.rc
 
-        if rc is not None:
-            self.rc = rc
-            self.system = rc.get_system_driver()
-            self.process_config()
-        else:
-            self.system = system or WESTSystem()
-            self.we_h5filename = we_h5filename
-            self.we_h5file_driver = we_h5file_driver
-            self.iter_prec = iter_prec
-            self.aux_compression_threshold = aux_compression_threshold
-            self.flush_period = flush_period
-            self.iter_ref_h5_template = iter_h5file_ref_template
-            self.store_h5 = iter_h5file_ref_template is not None
-
+        self.we_h5filename = self.default_we_h5filename
+        self.we_h5file_driver = self.default_we_h5file_driver
         self.we_h5file_version = None
         self.h5_access_mode = 'r+'
+        self.iter_prec = self.default_iter_prec
+        self.aux_compression_threshold = self.default_aux_compression_threshold
+
         self.we_h5file = None
 
         self.lock = threading.RLock()
+        self.flush_period = None
         self.last_flush = 0
+
+        self._system = None
+        self.iter_ref_h5_template = None
+        self.store_h5 = False
+
+        self.dataset_options = {}
+        self.process_config()
+
+    @property
+    def system(self):
+        if self._system is None:
+            self._system = self.rc.get_system_driver()
+        return self._system
+
+    @system.setter
+    def system(self, system):
+        self._system = system
 
     @property
     def closed(self):
@@ -861,8 +864,6 @@ class WESTDataManager:
                 # Parent must be set, though what it means depends on initpoint_type
                 assert segment.parent_id is not None
                 segment.seg_id = seg_id
-                seg_index_table[seg_id]['initpoint'] = json.dumps(segment.initpoint)
-                seg_index_table[seg_id]['endpoint'] = json.dumps(segment.endpoint)
                 seg_index_table[seg_id]['status'] = segment.status
                 seg_index_table[seg_id]['weight'] = segment.weight
                 seg_index_table[seg_id]['parent_id'] = segment.parent_id
@@ -993,8 +994,6 @@ class WESTDataManager:
                 ientry['cputime'] = segment.cputime
                 ientry['walltime'] = segment.walltime
                 ientry['weight'] = segment.weight
-                ientry['initpoint'] = json.dumps(segment.initpoint)
-                ientry['endpoint'] = json.dumps(segment.endpoint)
 
                 pcoord_entries[iseg] = segment.pcoord
 
@@ -1099,8 +1098,6 @@ class WESTDataManager:
                     walltime=float(row['walltime']),
                     cputime=float(row['cputime']),
                     weight=float(row['weight']),
-                    initpoint=json.loads(h5io.tostr(row['initpoint'])),
-                    endpoint=json.loads(h5io.tostr(row['endpoint'])),
                 )
 
                 if load_pcoords:
