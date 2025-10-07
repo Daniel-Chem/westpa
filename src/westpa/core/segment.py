@@ -1,10 +1,21 @@
 import enum
 import inspect
 import math
+from collections import UserDict
 
 import numpy as np
 
-from ._auxdata import AuxiliaryData
+
+# Custom dictionary used to implement validation for Segment.data.
+class _AuxiliaryData(UserDict):
+
+    def __setitem__(self, key, value):
+        if not isinstance(key, str):
+            raise TypeError('keys must be strings, not ' + type(value).__name__)
+        value = np.asarray(value)
+        if value.dtype == object:
+            raise TypeError('object arrays are not supported')
+        super().__setitem__(key, value)
 
 
 class Segment:
@@ -124,7 +135,7 @@ class Segment:
         self._pcoord = np.asarray(pcoord) if pcoord is not None else None
         self._walltime = walltime
         self._cputime = cputime
-        self._data = AuxiliaryData(data or {})
+        self._data = _AuxiliaryData(data or {})
 
         self._initpoint = initpoint
         self._endpoint = endpoint
