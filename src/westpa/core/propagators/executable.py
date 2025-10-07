@@ -1,4 +1,3 @@
-import dataclasses
 import logging
 import os
 import shutil
@@ -20,8 +19,6 @@ from westpa.core.propagators import WESTPropagator
 from westpa.core.states import BasisState, InitialState, return_state_type
 from westpa.core.segment import Segment
 from westpa.core.yamlcfg import check_bool
-from .._dataset import Dataset
-from .._executable import Executable
 
 from westpa.core.trajectory import load_trajectory
 from westpa.core.h5io import safe_extract
@@ -169,40 +166,7 @@ data_loaders = {
 }
 
 
-# TODO: Can we pass environ={'WEST_SIM_ROOT': os.getcwd()} instead of exporting to os.environ?
 class ExecutablePropagator(WESTPropagator):
-    """A propagator that runs dynamics and performs other tasks by running external programs.
-
-    Parameters
-    ----------
-    segment_ref_template : str
-        String with a ``{segment}`` replacement field, indicating the
-        directory in which to store output for a given segment.
-    basis_state_ref_template : str
-        String with a ``{basis_state}`` replacement field, indicating a
-        file containing coordinate data for a given basis state.
-    initial_state_ref_template : str
-        String with an ``{initial_state}`` replacement field, indicating a
-        file containing coordinate data for a given initial state.
-    propagator : Executable
-        Program that runs dynamics for a given segment.
-    gen_istate : Executable, optional
-        Program that generates an initial state from a basis state.
-    get_pcoord : Executable, optional
-        Program that retrieves the progress coordinate for a basis or initial state.
-    pre_iteration : Executable, optional
-        Program to execute at the beginning of each iteration.
-    post_iteration : Executable, optional
-        Program to execute at the end of each iteration.
-    environ : Mapping[str, str], optional
-        Environment variables to make available to the external programs run by
-        the propagator.
-    datasets : list of Dataset, optional
-        One or more datasets to load, along with options for their retrieval.
-        By default, only the ``'pcoord'`` dataset is loaded.
-
-    """
-
     ENV_CURRENT_ITER = 'WEST_CURRENT_ITER'
 
     # Environment variables set during propagation
@@ -227,29 +191,8 @@ class ExecutablePropagator(WESTPropagator):
     ENV_RAND128 = 'WEST_RAND128'
     ENV_RANDFLOAT = 'WEST_RANDFLOAT'
 
-    def __init__(
-        self,
-        rc=None,
-        *,
-        segment_ref_template=None,
-        basis_state_ref_template=None,
-        initial_state_ref_template=None,
-        propagator=None,
-        gen_istate=None,
-        get_pcoord=None,
-        pre_iteration=None,
-        post_iteration=None,
-        environ=None,
-        datasets=None,
-    ):
+    def __init__(self, rc=None):
         super().__init__(rc)
-
-        self.segment_ref_template = None
-        self.basis_state_ref_template = None
-        self.initial_state_ref_template = None
-
-        # Create a persistent RNG for each worker
-        self.rng = Generator(MT19937())
 
         # A mapping of environment variables to template strings which will be
         # added to the environment of all children launched.
@@ -257,69 +200,21 @@ class ExecutablePropagator(WESTPropagator):
 
         # A mapping of executable name ('propagator', 'pre_iteration', 'post_iteration') to
         # a dictionary of attributes like 'executable', 'stdout', 'stderr', 'environ', etc.
-        self.exe_info = {
-            'propagator': {},
-            'pre_iteration': {},
-            'post_iteration': {},
-            'get_pcoord': {},
-            'gen_istate': {},
-        }
+        self.exe_info = {}
+        self.exe_info['propagator'] = {}
+        self.exe_info['pre_iteration'] = {}
+        self.exe_info['post_iteration'] = {}
+        self.exe_info['get_pcoord'] = {}
+        self.exe_info['gen_istate'] = {}
 
-        # A mapping of data set name ('pcoord', 'coord', 'com', etc.) to a dictionary of
-        # attributes like 'loader', 'dtype', etc.
-        default_pcoord_dataset = Dataset(name='pcoord', loader=pcoord_loader)
-        self.data_info = {'pcoord': dataclasses.asdict(default_pcoord_dataset)}
+        # A mapping of data set name ('pcoord', 'coord', 'com', etc) to a dictionary of
+        # attributes like 'loader', 'dtype', etc
+        self.data_info = {}
+        self.data_info['pcoord'] = {}
 
-        if rc is not None:
-            self._process_config(rc)
-            return
+        # Validate configuration
+        config = self.rc.config
 
-        if segment_ref_template is not None:
-            self.segment_ref_template = segment_ref_template
-        elif self.segment_ref_template is None:
-            raise ValueError("'segment_ref_template' must be specified")
-
-        if basis_state_ref_template is not None:
-            self.basis_state_ref_template = basis_state_ref_template
-        elif self.basis_state_ref_template is None:
-            raise ValueError("'basis_state_ref_template' must be specified")
-
-        if initial_state_ref_template is not None:
-            self.initial_state_ref_template = initial_state_ref_template
-        elif self.initial_state_ref_template is None:
-            raise ValueError("'initial_state_ref_template' must be specified")
-
-        if environ is not None:
-            self.addtl_child_environ.update({k: str(v) for k, v in environ.items()})
-
-        for child_name, executable in {
-            'propagator': propagator,
-            'get_pcoord': get_pcoord,
-            'gen_istate': gen_istate,
-            'pre_iteration': pre_iteration,
-            'post_iteration': post_iteration,
-        }.items():
-            if executable is not None:
-                if not isinstance(executable, Executable):
-                    raise TypeError(f'{child_name!r} must be of type {Executable}')
-                child_info = dataclasses.asdict(executable)
-                child_info['executable'] = child_info.pop('args')
-                child_info['enabled'] = True
-                self.exe_info[child_name] = child_info
-
-        if not self.exe_info['propagator']:
-            raise ValueError("the 'propagator' program must be specified")
-
-        log.debug('exe_info: {!r}'.format(self.exe_info))
-
-        if datasets is not None:
-            for dataset in datasets:
-                self.data_info[dataset.name] = dataclasses.asdict(dataset)
-
-        log.debug('data_info: {!r}'.format(self.data_info))
-
-    def _process_config(self, rc):
-        config = rc.config
         for key in [
             ('west', 'executable', 'propagator', 'executable'),
             ('west', 'data', 'data_refs', 'segment'),
@@ -333,38 +228,42 @@ class ExecutablePropagator(WESTPropagator):
         self.initial_state_ref_template = config['west', 'data', 'data_refs', 'initial_state']
         store_h5 = config.get(['west', 'data', 'data_refs', 'iteration']) is not None
 
+        # Create a persistent RNG for each worker
+        self.rng = Generator(MT19937())
+
         # Load additional environment variables for all child processes
         self.addtl_child_environ.update({k: str(v) for k, v in (config['west', 'executable', 'environ'] or {}).items()})
 
         # Load configuration items relating to child processes
-        for child_name in ('propagator', 'pre_iteration', 'post_iteration', 'get_pcoord', 'gen_istate', 'subgroup_walkers'):
-            child_info = config.get(['west', 'executable', child_name])
+        for child_type in ('propagator', 'pre_iteration', 'post_iteration', 'get_pcoord', 'gen_istate', 'subgroup_walkers'):
+            child_info = config.get(['west', 'executable', child_type])
             if not child_info:
                 continue
 
-            info_prefix = ['west', 'executable', child_name]
+            info_prefix = ['west', 'executable', child_type]
 
             # require executable to be specified if anything is specified at all
             config.require(info_prefix + ['executable'])
 
-            self.exe_info[child_name]['executable'] = child_info['executable']
-            self.exe_info[child_name]['stdin'] = child_info.get('stdin', os.devnull)
-            self.exe_info[child_name]['stdout'] = child_info.get('stdout', None)
-            self.exe_info[child_name]['stderr'] = child_info.get('stderr', None)
-            self.exe_info[child_name]['cwd'] = child_info.get('cwd', None)
+            self.exe_info[child_type]['executable'] = child_info['executable']
+            self.exe_info[child_type]['stdin'] = child_info.get('stdin', os.devnull)
+            self.exe_info[child_type]['stdout'] = child_info.get('stdout', None)
+            self.exe_info[child_type]['stderr'] = child_info.get('stderr', None)
+            self.exe_info[child_type]['cwd'] = child_info.get('cwd', None)
 
-            if child_name not in ('propagator', 'get_pcoord', 'gen_istate'):
-                self.exe_info[child_name]['enabled'] = child_info.get('enabled', True)
+            if child_type not in ('propagator', 'get_pcoord', 'gen_istate'):
+                self.exe_info[child_type]['enabled'] = child_info.get('enabled', True)
             else:
                 # for consistency, propagator, get_pcoord, and gen_istate can never be disabled
-                self.exe_info[child_name]['enabled'] = True
+                self.exe_info[child_type]['enabled'] = True
 
             # apply environment modifications specific to this executable
-            self.exe_info[child_name]['environ'] = {k: str(v) for k, v in (child_info.get('environ') or {}).items()}
+            self.exe_info[child_type]['environ'] = {k: str(v) for k, v in (child_info.get('environ') or {}).items()}
 
         log.debug('exe_info: {!r}'.format(self.exe_info))
 
         # Load configuration items relating to dataset input
+        self.data_info['pcoord'] = {'name': 'pcoord', 'loader': pcoord_loader, 'enabled': True, 'filename': None, 'dir': False}
         self.data_info['trajectory'] = {
             'name': 'trajectory',
             'loader': trajectory_loader,
@@ -382,7 +281,7 @@ class ExecutablePropagator(WESTPropagator):
         self.data_info['log'] = {'name': 'seglog', 'loader': seglog_loader, 'enabled': store_h5, 'filename': None, 'dir': False}
 
         # Grab config from west.executable.datasets, else fallback to west.data.datasets.
-        dataset_configs = config.get(["west", "executable", "datasets"], config.get(['west', 'data', 'datasets'], {}))
+        dataset_configs = config.get(["west", "executable", "datasets"]) or config.get(['west', 'data', 'datasets'], {})
         for dsinfo in dataset_configs:
             try:
                 dsname = dsinfo['name']
@@ -465,7 +364,7 @@ class ExecutablePropagator(WESTPropagator):
 
         # close_fds is critical for preventing out-of-file errors
         proc = subprocess.Popen(
-            executable,
+            [executable],
             cwd=cwd,
             stdin=stdin,
             stdout=stdout,
@@ -633,7 +532,7 @@ class ExecutablePropagator(WESTPropagator):
             # If the filesystem is NOT properly clean.
             shutil.rmtree(environ[self.ENV_CURRENT_SEG_DATA_REF])
             os.makedirs(environ[self.ENV_CURRENT_SEG_DATA_REF])
-        if 'restart' in self.data_info and self.data_info['restart']['enabled']:
+        if self.data_info['restart']['enabled']:
             restart_writer(environ[self.ENV_CURRENT_SEG_DATA_REF], segment=segment)
 
     def setup_dataset_return(self, segment=None, subset_keys=None):
@@ -818,7 +717,3 @@ class ExecutablePropagator(WESTPropagator):
             segment.walltime = time.time() - starttime
             segment.cputime = rusage.ru_utime
         return segments
-
-    def __repr__(self):
-        executables = ', '.join(f"{k}={v['executable']}" for k, v in self.exe_info.items() if v)
-        return f'<{type(self).__name__} at {hex(id(self))} with {executables}>'
