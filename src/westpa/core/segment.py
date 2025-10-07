@@ -1,20 +1,23 @@
 import enum
 import inspect
+import json
 import math
 from collections import UserDict
 
 import numpy as np
 
 
-# Custom dictionary used to implement validation for Segment.data.
 class _AuxiliaryData(UserDict):
+    # Custom dictionary used to implement validation for Segment.data.
 
     def __setitem__(self, key, value):
         if not isinstance(key, str):
             raise TypeError('keys must be strings, not ' + type(value).__name__)
         value = np.asarray(value)
-        if value.dtype == object:
-            raise TypeError('object arrays are not supported')
+        try:
+            json.dumps(value.tolist())
+        except TypeError:
+            raise TypeError(f'values of dtype {str(value.dtype)!r} are not supported')
         super().__setitem__(key, value)
 
 
