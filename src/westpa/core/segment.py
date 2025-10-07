@@ -18,8 +18,8 @@ class Segment:
     weight : float, optional
     initpoint : `JSON encodable <https://docs.python.org/3/library/json.html#py-to-json-table>`_ object
     endpoint : `JSON encodable <https://docs.python.org/3/library/json.html#py-to-json-table>`_ object
-    pcoord : ndarray, optional
-    data : MutableMapping[str, ndarray]
+    pcoord : numpy.ndarray, optional
+    data : MutableMapping[str, numpy.ndarray]
     walltime : float
     cputime : float
     n_iter : int, optional
@@ -329,12 +329,16 @@ class Segment:
         for name in inspect.signature(self.__init__).parameters:
             if (value := getattr(self, name)) is None:
                 continue
+
             if name in ('walltime', 'cputime') and value == 0.0:
                 continue
             if name in ('data', 'wtg_parent_ids') and len(value) == 0:
                 continue
             if name == 'endpoint_type' and value == Segment.EndPointType.UNSET:
                 continue
+            if name == 'status' and value == Segment.Status.UNSET:
+                continue
+
             match name:
                 case 'pcoord':
                     d[name] = value.tolist()
