@@ -391,7 +391,7 @@ class WESTRC:
 
         drivername = self.config.get(['west', 'drivers', 'data_manager'], 'hdf5')
         if drivername.lower() in ('hdf5', 'default'):
-            data_manager = westpa.core.data_manager.WESTDataManager(rc=self)
+            data_manager = westpa.core.data_manager.WESTDataManager()
         else:
             data_manager = extloader.get_object(drivername)(rc=self)
         log.debug('loaded data manager: {!r}'.format(data_manager))
@@ -413,15 +413,15 @@ class WESTRC:
             if use_mab:
                 from .binning.mab_driver import MABDriver
 
-                we_driver = MABDriver(rc=self)
+                we_driver = MABDriver()
             elif use_binless:
                 from .binning.binless_driver import BinlessDriver
 
-                we_driver = BinlessDriver(rc=self)
+                we_driver = BinlessDriver()
             else:
                 from .we_driver import WEDriver
 
-                we_driver = WEDriver(rc=self)
+                we_driver = WEDriver()
         else:
             we_driver = extloader.get_object(drivername)(rc=self)
 
@@ -455,7 +455,7 @@ class WESTRC:
         if drivername.lower() == 'executable':
             from westpa.core.propagators.executable import ExecutablePropagator
 
-            propagator = ExecutablePropagator(rc=self)
+            propagator = ExecutablePropagator()
         else:
             propagator = extloader.get_object(drivername)(rc=self)
         log.debug('loaded propagator {!r}'.format(propagator))
@@ -548,7 +548,7 @@ class WESTRC:
           the parsed settings from the config file.
         """
 
-        yamlSystem = YAMLSystem(rc=self)
+        yamlSystem = YAMLSystem()
         print("System building only off of the configuration file")
         # Now for the building of the system from YAML we need to use
         # require for these settings since they are musts.
