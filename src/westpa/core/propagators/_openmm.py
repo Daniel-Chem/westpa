@@ -1,10 +1,15 @@
 import copy
 import inspect
+import logging
 import os
+import secrets
 
+import numpy as np
 import openmm.app
 
 from ._abc import Propagator
+
+logger = logging.getLogger(__name__)
 
 
 class OpenMMReport:
@@ -78,6 +83,9 @@ class OpenMMPropagator(Propagator):
         Name of the XML file used to store the final microstate of the segment.
     reports : iterable of :class:`OpenMMReport`, optional
         Additional output to report for each segment.
+    seed : int or sequence of int, optional
+        Seed to initialize the random state. All integer values must be
+        non-negative.
 
     Examples
     --------
@@ -100,6 +108,7 @@ class OpenMMPropagator(Propagator):
     ...     steps=1000,
     ... )
 
+
     """
 
     def __init__(
@@ -114,6 +123,7 @@ class OpenMMPropagator(Propagator):
         segment_dir_template='traj_segs/{n_iter:06d}/{seg_id:06d}',
         endpoint_filename="endpoint.xml",
         reports=None,
+        seed=None,
     ):
         self.topology = topology
         self.system = system
@@ -125,34 +135,51 @@ class OpenMMPropagator(Propagator):
         self.endpoint_filename = endpoint_filename
         self.reports = list(reports or [])
 
+        seed = seed if seed is not None else secrets.randbits(128)
+        logger.info(f'{seed=}')
+        self.seed = seed
+
     def __call__(self, segment):
+        # see https://numpy.org/doc/2.2/reference/random/parallel.html#sequence-of-integer-seeds
+        rng = np.random.default_rng([segment.seg_id, segment.n_iter, self.seed])
+
+        integrator = copy.copy(self.integrator)  # copy to avoid 'already bound to Context' error
+        if hasattr(integrator, 'setRandomNumberSeed'):
+            integrator.setRandomNumberSeed(rng.integers(low=1, high=2**31))
+
+        for force in self.system.getForces():
+            if hasattr(force, 'setRandomNumberSeed'):
+                force.setRandomNumberSeed(rng.integers(low=1, high=2**31))
+
         simulation = openmm.app.Simulation(
             self.topology,
             self.system,
-            copy.copy(self.integrator),
+            integrator,
             platform=self.platform,
             platformProperties=self.platform_properties,
             state=segment.initpoint,
         )
 
-        output_dir = self.segment_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id)
-        os.makedirs(output_dir)
+        segment_dir = self.segment_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id)
+        os.makedirs(segment_dir)
 
         for report in self.reports:
-            file = os.path.join(output_dir, report.filename)
+            file = os.path.join(segment_dir, report.filename)
             reporter = report.reporter_type(file, report.report_interval, **report.options)
             simulation.reporters.append(reporter)
 
         try:
             simulation.step(self.steps)
         except openmm.OpenMMException as e:
-            segment.mark_as_failed(f'integration error: {e}')
+            segment.mark_as_failed(str(e))
         else:
-            endpoint_file = os.path.join(output_dir, self.endpoint_filename)
+            endpoint_file = os.path.join(segment_dir, self.endpoint_filename)
             simulation.saveState(endpoint_file)
             segment.endpoint = endpoint_file
 
         return segment
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} at {hex(id(self))}>'
+        parameters = inspect.signature(self.__init__).parameters
+        args = ', '.join(f'{name}={getattr(self, name)!r}' for name in parameters)
+        return type(self).__name__ + '(' + args + ')'
