@@ -443,7 +443,7 @@ class Simulation:
         self.data_manager.flush_backing()
 
     def _run_we(self):
-        segments = [
+        replicas = [
             Segment(
                 n_iter=segment.n_iter,
                 seg_id=segment.seg_id,
@@ -457,7 +457,7 @@ class Simulation:
             )
             for segment in self.current_iter_segments
         ]
-        self.resampled_segments = list(self.resampler(segments))
+        self.resampled_segments = list(self.resampler(replicas))
 
         weights = np.array([segment.weight for segment in self.resampled_segments])
         if (weights <= 0).any():
