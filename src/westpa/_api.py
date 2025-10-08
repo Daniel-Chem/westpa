@@ -219,7 +219,7 @@ class Simulation:
         """
         if os.path.exists(self.datafile):
             reason = f'file {self.datafile!r} already exists'
-            raise ValueError(f"can't initialize the simulation: {reason}")
+            raise FileExistsError(f"can't initialize the simulation: {reason}")
 
         self.data_manager.prepare_backing()
         logger.info(f'Created HDF5 file {self.datafile!r}')
