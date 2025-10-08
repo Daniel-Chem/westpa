@@ -83,13 +83,13 @@ class Segment:
     SEG_ENDPOINT_MERGED = EndPointType.MERGED
     SEG_ENDPOINT_RECYCLED = EndPointType.RECYCLED
 
-    statuses = {}
-    initpoint_types = {}
-    endpoint_types = {}
+    statuses = {f'SEG_STATUS_{member.name}': member.value for member in Status}
+    initpoint_types = {f'SEG_INITPOINT_{member.name}': member.value for member in InitPointType}
+    endpoint_types = {f'SEG_ENDPOINT_{member.name}': member.value for member in EndPointType}
 
-    status_names = {}
-    initpoint_type_names = {}
-    endpoint_type_names = {}
+    status_names = {member.value: f'SEG_STATUS_{member.name}' for member in Status}
+    initpoint_type_names = {member.value: f'SEG_INITPOINT_{member.name}' for member in InitPointType}
+    endpoint_type_names = {member.value: f'SEG_ENDPOINT_{member.name}' for member in EndPointType}
 
     # convenience functions for binning  # TODO: Remove.
     @staticmethod
@@ -400,16 +400,6 @@ class Segment:
                     kwargs[name] = value
         return cls(**kwargs)
 
+    # TODO: Remove. Use `segment.status.name` in new code.
     status_text = property((lambda s: s.status_names[s.status]))
     endpoint_type_text = property((lambda s: s.endpoint_type_names[s.endpoint_type]))
-
-
-Segment.statuses.update({_attr: getattr(Segment, _attr) for _attr in dir(Segment) if _attr.startswith('SEG_STATUS_')})
-Segment.initpoint_types.update({_attr: getattr(Segment, _attr) for _attr in dir(Segment) if _attr.startswith('SEG_INITPOINT_')})
-Segment.endpoint_types.update({_attr: getattr(Segment, _attr) for _attr in dir(Segment) if _attr.startswith('SEG_ENDPOINT_')})
-
-Segment.status_names.update({getattr(Segment, _attr): _attr for _attr in dir(Segment) if _attr.startswith('SEG_STATUS_')})
-Segment.initpoint_type_names.update(
-    {getattr(Segment, _attr): _attr for _attr in dir(Segment) if _attr.startswith('SEG_INITPOINT_')}
-)
-Segment.endpoint_type_names.update({getattr(Segment, _attr): _attr for _attr in dir(Segment) if _attr.startswith('SEG_ENDPOINT_')})
