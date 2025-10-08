@@ -591,13 +591,13 @@ class HuberKimResampler(Resampler):
         self.bin_target_counts = bin_target_counts
 
     def __call__(self, segments):
-        bins = self.bin_mapper.map(segments)
+        bins_by_index = self.bin_mapper.map(segments)
+
+        weight_getter = operator.attrgetter('weight')
 
         # Adapted from WEDriver._run_we():
-        for bin_index, bin_ in bins.items():
-            target_count = self.bin_target_counts[bin_index]
-
-            weight_getter = operator.attrgetter('weight')
+        for index, bin_ in bins_by_index.items():
+            target_count = self.bin_target_counts[index]
 
             segments = np.array(sorted(bin_, key=weight_getter))
             weights = np.array(list(map(weight_getter, segments)))
@@ -625,38 +625,30 @@ class HuberKimResampler(Resampler):
                 cumulative_weight = cumulative_weight[~to_merge] - new_segment.weight
                 to_merge = cumulative_weight <= self.merge_cutoff * ideal_weight
 
-            # Adjust counts.
-            # TODO: Refactor to avoid repeated sorts.
+            # Adjust counts. TODO: Refactor to avoid repeated sorts.
             if self.adjust_counts:
-                # split
                 while len(bin_) < target_count:
                     logger.debug('adjusting counts by splitting')
-                    # always split the highest probability walker into two
                     segments = sorted(bin_, key=weight_getter)
                     bin_.remove(segments[-1])
-                    new_segments = split(segments[-1])
+                    new_segments = split(segments[-1])  # split largest walker in 2
                     bin_.update(new_segments)
-
-                # merge
                 while len(bin_) > target_count:
                     logger.debug('adjusting counts by merging')
-                    # always merge the two lowest-probability walkers
                     segments = sorted(bin_, key=weight_getter)
-                    bin_.difference_update(segments[:2])
+                    bin_.difference_update(segments[:2])  # merge 2 smallest walkers
                     new_segment = merge(segments[:2], seed=self.rng)
                     bin_.add(new_segment)
 
             # Apply weight thresholds.
             segments = np.array(sorted(bin_, key=weight_getter))
             weights = np.array(list(map(weight_getter, segments)))
-
             to_split = weights > self.max_weight
             for segment in segments[to_split]:
                 bin_.remove(segment)
                 m = int(math.ceil(segment.weight / self.max_weight))
                 new_segments = split(segment, m)
                 bin_.update(new_segments)
-
             to_merge = weights < self.min_weight
             while sum(to_merge) >= 2:
                 bin_.difference_update(segments[to_merge])
@@ -670,7 +662,7 @@ class HuberKimResampler(Resampler):
                 if not (self.min_weight <= segment.weight <= self.max_weight):
                     logger.warning(f'Unable to fulfill weight constraints for {segment}.')
 
-        return set.union(*bins.values())
+        return set.union(*bins_by_index.values())
 
     def __repr__(self):
         args = []
