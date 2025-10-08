@@ -331,7 +331,8 @@ class Simulation:
 
             finally:
                 self.data_manager.flush_backing()
-                self.data_manager.close_backing()
+
+        self.data_manager.close_backing()
 
         logger.info('%s' % time.asctime())
         logger.info('WEST run complete.')
