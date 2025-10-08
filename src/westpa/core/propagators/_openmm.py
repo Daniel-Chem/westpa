@@ -141,6 +141,8 @@ class OpenMMPropagator(Propagator):
         self.seed = seed
 
     def __call__(self, segment):
+        start = time.time()
+
         # see https://numpy.org/doc/2.2/reference/random/parallel.html#sequence-of-integer-seeds
         rng = np.random.default_rng([segment.seg_id, segment.n_iter, self.seed])
 
@@ -169,7 +171,6 @@ class OpenMMPropagator(Propagator):
             reporter = report.reporter_type(file, report.report_interval, **report.options)
             simulation.reporters.append(reporter)
 
-        start = time.time()
         try:
             simulation.step(self.steps)
         except openmm.OpenMMException as e:
