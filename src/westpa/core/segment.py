@@ -29,16 +29,16 @@ class Segment:
     Attributes
     ----------
     weight : float
-    initpoint : numpy.ndarray or str
-    endpoint : numpy.ndarray or str, optional
-    pcoord : numpy.ndarray, optional
-    data : MutableMapping[str, numpy.ndarray]
+    initpoint : ndarray | str
+    endpoint : ndarray | str, optional
+    pcoord : ndarray, optional
+    data : MutableMapping[str, ndarray]
     walltime : float
     cputime : float
     n_iter : int
     seg_id : int
     parent_id : int
-    wtg_parent_ids : set of int
+    wtg_parent_ids : Set[int]
     initpoint_type : :class:`InitPointType`
     endpoint_type : :class:`EndPointType`
     status : :class:`Status`
