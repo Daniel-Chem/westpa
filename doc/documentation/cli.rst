@@ -29,6 +29,7 @@ WESTPA Command Line Interface
     cli/w_ntop
     cli/w_multi_west
     cli/w_red
+    cli/w_timings
     
 .. toctree::
    :maxdepth: 1
