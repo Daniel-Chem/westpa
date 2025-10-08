@@ -13,9 +13,9 @@ As a simple example, the following function is a propagator for a symmetric rand
         segment.endpoint = segment.initpoint + random.choice([-1, 1])
         return segment
 
-WESTPA provides a built-in :class:`~westpa.OpenMMPropagator` type for running molecular
-dynamics with the `OpenMM <https://openmm.org>`_ toolkit. It is available for import
-when OpenMM is installed, which can be done either directly:
+WESTPA provides a built-in propagator type, :class:`~westpa.OpenMMPropagator`,
+for running molecular dynamics with the `OpenMM <https://openmm.org>`_ toolkit.
+To use it, OpenMM must be installed; this can be done either directly:
 
 .. code-block::
 
