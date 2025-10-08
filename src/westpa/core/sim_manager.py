@@ -16,7 +16,6 @@ from .segment import Segment
 from .states import InitialState
 from . import extloader
 from . import wm_ops
-from ._rc import WESTRC
 
 
 log = logging.getLogger(__name__)
@@ -47,20 +46,13 @@ class WESimManager:
         self.max_run_walltime = config.get(['west', 'propagation', 'max_run_wallclock'], default=None)
         self.max_total_iterations = config.get(['west', 'propagation', 'max_total_iterations'], default=None)
 
-    def __init__(
-        self,
-        rc=None,
-        *,
-        we_driver=None,
-        work_manager=None,
-        data_manager=None,
-        max_total_iterations=None,
-        max_run_walltime=None,
-        gen_istates=False,
-        propagator_block_size=1,
-        status_stream=None,
-        verbosity=None,
-    ):
+    def __init__(self, rc=None):
+        self.rc = rc or westpa.rc
+        self.work_manager = self.rc.get_work_manager()
+        self.data_manager = self.rc.get_data_manager()
+        self.we_driver = self.rc.get_we_driver()
+        self.system = self.rc.get_system_driver()
+
         # A table of function -> list of (priority, name, callback) tuples
         self._callback_table = {}
         self._valid_callbacks = set(
@@ -85,30 +77,7 @@ class WESimManager:
         self.save_transition_matrices = False
         self.max_run_walltime = None
         self.max_total_iterations = None
-
-        if rc is not None:
-            self.work_manager = rc.get_work_manager()
-            self.data_manager = rc.get_data_manager()
-            self.we_driver = rc.get_we_driver()
-            self.system = rc.get_system_driver()
-
-            self.rc = rc
-            self.process_config()
-        else:
-            self.work_manager = work_manager
-            self.data_manager = data_manager
-            self.we_driver = we_driver
-            self.system = we_driver.system
-
-            self.do_gen_istates = gen_istates
-            self.propagator_block_size = propagator_block_size
-            self.save_transition_matrices = False  # TODO: Remove this option?
-            self.max_run_walltime = max_run_walltime
-            self.max_total_iterations = max_total_iterations
-
-            self.rc = WESTRC()
-            self.rc.status_stream = status_stream
-            self.rc.verbosity = verbosity
+        self.process_config()
 
         # Per-iteration variables
         self.n_iter = None  # current iteration
@@ -774,7 +743,7 @@ class WESimManager:
         self.data_manager.prepare_iteration(self.n_iter + 1, list(self.we_driver.next_iter_segments))
         self.data_manager.save_new_weight_data(self.n_iter + 1, self.we_driver.new_weights)
 
-    def run(self, n_iters=None):
+    def run(self):
         run_starttime = time.time()
         max_walltime = self.max_run_walltime
         if max_walltime:
@@ -784,11 +753,7 @@ class WESimManager:
             run_killtime = None
 
         self.n_iter = self.data_manager.current_iteration
-
-        if n_iters is not None:
-            max_iter = self.n_iter + n_iters - 1
-        else:
-            max_iter = self.max_total_iterations or self.n_iter
+        max_iter = self.max_total_iterations or self.n_iter + 1
 
         iter_elapsed = 0
         while self.n_iter <= max_iter:
