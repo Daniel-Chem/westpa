@@ -1,2 +1,4 @@
-Analyzing simulations
-=====================
+Analysis
+========
+
+.. autoclass:: westpa.analysis.Run

@@ -52,10 +52,9 @@ release = version
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.coverage',
     'numpydoc',
+    'sphinx.ext.autodoc',
+    'sphinx.ext.coverage',
 ]
 
 autosummary_generate = False

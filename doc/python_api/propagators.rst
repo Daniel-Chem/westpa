@@ -2,11 +2,10 @@ Propagators
 ===========
 
 A *propagator* is a callable that runs dynamics for a given trajectory segment.
-Its takes a :class:`~westpa.Segment` object as input, reads its ``initpoint``, sets its
-``endpoint``, and returns the modified segment.
+Its takes a :class:`~westpa.Segment` object as input, reads its ``initpoint``,
+sets its ``endpoint``, and returns the modified object.
 
-For illustration, the function below is a propagator that takes one step of a
-symmetric random walk::
+As a simple example, the following function is a propagator for a symmetric random walk::
 
     import random
 
@@ -14,15 +13,20 @@ symmetric random walk::
         segment.endpoint = segment.initpoint + random.choice([-1, 1])
         return segment
 
+WESTPA provides a built-in :class:`~westpa.OpenMMPropagator` type for running molecular
+dynamics with the `OpenMM <https://openmm.org>`_ toolkit. It is available for import
+when OpenMM is installed, which can be done either directly:
 
+.. code-block::
 
-Built-in propagators
---------------------
+    python -m pip install openmm
 
-.. autosummary::
-   :nosignatures:
+or by installing WESTPA with the ``openmm`` extra:
 
-   ~westpa.OpenMMPropagator
+.. code-block::
+
+    python -m pip install westpa[openmm]
 
 .. autoclass:: westpa.OpenMMPropagator
+
 .. autoclass:: westpa.OpenMMReport

@@ -1,5 +1,5 @@
-Segment objects
-===============
+Segments
+========
 
 Propagation, resampling, and other WESTPA simulation routines operate on
 :class:`~westpa.Segment` objects, which describe trajectory segments in various
@@ -10,7 +10,7 @@ stage of completion.
 
 .. autoclass:: westpa.Segment.InitPointType()
    :show-inheritance:
-   :members: CONTINUES, NEWTRAJ
+   :members: UNSET, CONTINUES, NEWTRAJ
 
 .. autoclass:: westpa.Segment.EndPointType()
    :show-inheritance:
