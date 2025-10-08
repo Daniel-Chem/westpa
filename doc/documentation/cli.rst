@@ -1,9 +1,9 @@
-WESTPA Command Line Interface
-=============================
+Command Line Interface
+======================
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Setting up and running a simulation
+    :maxdepth: 1
+    :caption: Setting up and running a simulation
 
     cli/w_init
     cli/w_bins
@@ -12,8 +12,8 @@ WESTPA Command Line Interface
     cli/w_fork
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Analyzing a simulation
+    :maxdepth: 1
+    :caption: Analyzing a simulation
 
     cli/w_assign
     cli/w_trace
@@ -30,10 +30,10 @@ WESTPA Command Line Interface
     cli/w_multi_west
     cli/w_red
     cli/w_timings
-    
+
 .. toctree::
-   :maxdepth: 1
-   :caption: Plotting tools
+    :maxdepth: 1
+    :caption: Plotting tools
 
     cli/plothist
     cli/ploterr

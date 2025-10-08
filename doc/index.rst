@@ -7,3 +7,4 @@ WESTPA reference
    :maxdepth: 2
 
    python_api/index
+   documentation/cli
