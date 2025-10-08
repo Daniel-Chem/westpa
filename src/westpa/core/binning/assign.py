@@ -43,6 +43,7 @@ the total number of bins within the mapper.
 import hashlib
 import logging
 import pickle
+from collections import defaultdict
 
 import numpy as np
 
@@ -65,6 +66,15 @@ log = logging.getLogger(__name__)
 
 
 class BinMapper:
+    """Base class for bin mappers.
+
+    Attributes
+    ----------
+    nbins : int
+        Number of bins to which the bin mapper assigns segments.
+
+    """
+
     hashfunc = hashlib.sha256
 
     def __init__(self):
@@ -90,6 +100,58 @@ class BinMapper:
     def __repr__(self):
         return '<{} at 0x{:x} with {:d} bins>'.format(self.__class__.__name__, id(self), self.nbins or 0)
 
+    def map(self, segments):
+        """Group trajectory segments into bins.
+
+        By default, if the segments have ``pcoord`` values, this method calls
+        :meth:`assign` on the final progress coordinate points (i.e.,
+        ``[s.pcoord[-1] for s in segments]``). If the segments don't have
+        ``pcoord`` values, but their ``endpoint`` values are scalars or 1-D arrays,
+        this method calls :meth:`assign()` on the final microstates (i.e.,
+        ``[numpy.atleast_1d(s.endpoint) for s in segments]``).
+
+        Parameters
+        ----------
+        segments : Iterable[Segment]
+            Set of propagated trajectory segments.
+
+        Returns
+        -------
+        Mapping[int, Set[Segment]]
+            Populated bins, keyed by bin index.
+
+        Raises
+        ------
+        NotImplementedError
+            By default. Subclasses must override this method or implement :meth:`assign`.
+
+        """
+        segments = list(segments)
+
+        if segments[0].pcoord is not None:
+            coords = np.array([s.pcoord[-1] for s in segments])
+        elif isinstance(segments[0].endpoint, np.ndarray) and segments[0].endpoint.ndim < 2:
+            coords = np.array([np.atleast_1d(s.endpoint) for s in segments])
+        else:
+            raise ValueError("'endpoint' must be a scalar or 1-D array when 'pcoord' is missing")
+
+        bins = defaultdict(set)
+        for i, segment in zip(self.assign(coords), segments):
+            bins[i].add(segment)
+
+        return bins
+
+    def assign(self, coords, mask=None, output=None):
+        """Assign segment coordinates to bins.
+
+        Raises
+        ------
+        NotImplementedError
+            By default.
+
+        """
+        raise NotImplementedError()
+
 
 class NopMapper(BinMapper):
     '''Put everything into one bin.'''
@@ -110,9 +172,7 @@ class NopMapper(BinMapper):
 
         output[mask] = 0
 
-
-class NOPBinMapper(NopMapper):
-    pass
+        return output
 
 
 class RectilinearBinMapper(BinMapper):
