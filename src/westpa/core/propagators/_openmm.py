@@ -3,6 +3,7 @@ import inspect
 import logging
 import os
 import secrets
+import time
 
 import numpy as np
 import openmm.app
@@ -168,6 +169,7 @@ class OpenMMPropagator(Propagator):
             reporter = report.reporter_type(file, report.report_interval, **report.options)
             simulation.reporters.append(reporter)
 
+        start = time.time()
         try:
             simulation.step(self.steps)
         except openmm.OpenMMException as e:
@@ -176,6 +178,7 @@ class OpenMMPropagator(Propagator):
             endpoint_file = os.path.join(segment_dir, self.endpoint_filename)
             simulation.saveState(endpoint_file)
             segment.endpoint = endpoint_file
+            segment.walltime = time.time() - start
 
         return segment
 
