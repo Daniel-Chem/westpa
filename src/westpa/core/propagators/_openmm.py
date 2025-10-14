@@ -42,7 +42,7 @@ class OpenMMReport:
     ...     filename='traj.xtc',
     ...     report_interval=1000,
     ... )
-    OpenMMReport(reporter_type=<class 'openmm.app.xtcreporter.XTCReporter'>,filename='traj.xtc', report_interval=1000, options={})
+    OpenMMReport(reporter_type=<class 'openmm.app.xtcreporter.XTCReporter'>, filename='traj.xtc', report_interval=1000, options={})
 
     """
 
