@@ -19,6 +19,7 @@ from .core.segment import Segment
 from .core.we_driver import ConsistencyError
 from .work_managers import SerialWorkManager
 from .work_managers.core import WorkManager
+from ._state import State
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,8 @@ def split(segment, m=2):
             weight=new_weight,
             parent_id=segment.parent_id,
             wtg_parent_ids=segment.wtg_parent_ids,
-            initpoint=segment.initpoint,
-            endpoint=segment.endpoint,
+            initial_state=segment.initial_state,
+            final_state=segment.final_state,
             pcoord=segment.pcoord,
             data=segment.data,
         )
@@ -66,9 +67,9 @@ def merge(segments, seed=None):
 
     Parameters
     ----------
-    segments : Iterable[Segment]
+    segments : iterable of Segment
         Segments to merge.
-    seed : int | Sequence[int] | SeedSequence | BitGenerator | Generator, optional
+    seed : int or sequence of int, optional
         Seed to initialize the random state.
 
     Returns
@@ -88,8 +89,8 @@ def merge(segments, seed=None):
         weight=total_weight,
         parent_id=choice.parent_id,
         wtg_parent_ids=set.union(*(segment.wtg_parent_ids for segment in segments)),
-        initpoint=choice.initpoint,
-        endpoint=choice.endpoint,
+        initial_state=choice.initial_state,
+        final_state=choice.final_state,
         pcoord=choice.pcoord,
         data=choice.data,
     )
@@ -104,7 +105,7 @@ class Simulation:
         Path to the HDF5 file used to store simulation data (e.g., ``'west.h5'``).
     propagator : Callable[[Segment], Segment]
         Routine that runs dynamics for a given trajectory segment. It should
-        read a segment's ``initpoint``, set its ``endpoint``, and return the
+        read a segment's ``initial_state``, set its ``final_state``, and return the
         modified segment.
     resampler : Callable[[Iterable[Segment]], Iterable[Segment]]
         Routine that takes a set of propagated trajectory segments, performs
@@ -203,17 +204,17 @@ class Simulation:
 
     def initialize(
         self,
-        initpoints,
+        initial_states,
         weights=None,
     ):
         """Initialize the simulation.
 
         Parameters
         ----------
-        initpoints : Iterable[array_like | str]
-            Microstates from which to start trajectories.
-        weights : Iterable[float], optional
-            Weights to assign the trajectories. By default, the trajectories are
+        initial_states : State or iterable of State
+            Microstates from which to start trajectories (one per trajectory).
+        weights : 1-D array-like, optional
+            Weight to assign each trajectory. By default, the trajectories are
             assigned equal weights.
 
         """
@@ -224,12 +225,17 @@ class Simulation:
         self.data_manager.prepare_backing()
         logger.info(f'Created HDF5 file {self.datafile!r}')
 
-        initpoints = list(initpoints)
+        if isinstance(initial_states, State):
+            initial_states = [initial_states]
+        else:
+            initial_states = list(initial_states)
 
         if weights is None:
-            weights = np.ones(len(initpoints))
+            weights = np.ones(len(initial_states))
         else:
-            weights = np.fromiter(weights, dtype=float, count=len(initpoints))
+            weights = np.array(weights, dtype=float)
+            if len(weights) != len(initial_states):
+                raise ValueError("length of 'weights' must match number of initial states")
         weights /= weights.sum()
 
         self.current_iter_segments = [
@@ -239,10 +245,10 @@ class Simulation:
                 weight=weight,
                 parent_id=-(1 + index),
                 wtg_parent_ids={-(1 + index)},
-                initpoint=initpoint,
+                initial_state=state,
                 status=Segment.Status.PREPARED,
             )
-            for index, (initpoint, weight) in enumerate(zip(initpoints, weights))
+            for index, (state, weight) in enumerate(zip(initial_states, weights))
         ]
 
         # these h5 groups are required by data_manager.prepare_iteration()
@@ -451,8 +457,8 @@ class Simulation:
                 weight=segment.weight,
                 parent_id=segment.parent_id,
                 wtg_parent_ids=[segment.seg_id],  # initialize weight transfer graph
-                initpoint=segment.initpoint,
-                endpoint=segment.endpoint,
+                initial_state=segment.initial_state,
+                final_state=segment.final_state,
                 pcoord=segment.pcoord,
                 data=segment.data,
             )
@@ -471,26 +477,26 @@ class Simulation:
     def _prepare_next_iteration(self):
         if self.sink is not None:
             recycled_segments = set(filter(self.sink.indicator, self.resampled_segments))
-            new_initpoints = self.source.random_sample(len(recycled_segments))
+            new_initial_states = self.source.random_sample(len(recycled_segments))
         else:
             recycled_segments = set()
-            new_initpoints = []
+            new_initial_states = []
 
         for segment in self.resampled_segments:
             parent = self.current_iter_segments[segment.seg_id]
 
             if segment in recycled_segments:
                 parent.endpoint_type = Segment.EndPointType.RECYCLED
-                parent_id = -len(new_initpoints)
-                initpoint = new_initpoints.pop()
+                parent_id = -len(new_initial_states)
+                initial_state = new_initial_states.pop()
             else:
                 parent.endpoint_type = Segment.EndPointType.CONTINUES
                 parent_id = parent.seg_id
-                initpoint = parent.endpoint
+                initial_state = parent.final_state
 
             new_segment = Segment(
                 weight=segment.weight,
-                initpoint=initpoint,
+                initial_state=initial_state,
                 parent_id=parent_id,
                 wtg_parent_ids=segment.wtg_parent_ids,
                 n_iter=segment.n_iter + 1,
@@ -539,7 +545,7 @@ class HuberKimResampler(Resampler):
         Minimum allowed weight.
     max_weight : float, default 1.0
         Maximum allowed weight.
-    seed : int  | Sequence[int], optional
+    seed : int or sequence of int, optional
         Seed to initialize the random state. All integer values must be
         non-negative.
 
@@ -682,73 +688,77 @@ class Source:
 
     Parameters
     ----------
-    microstates : Iterable[array_like | str]
-        Microstates from which to initialize trajectories.
-    probabilities : Iterable[float], optional
-        Probability of each microstate to be selected when initializing
-        a trajectory. Defaults to a uniform distribution.
+    states : State or iterable of State
+        One or more source states.
+    p : 1-D array-like, optional
+        Probability to assign each state. Defaults to a uniform distribution.
 
     Attributes
     ----------
-    microstates : Sequence[ndarray | str]
-        Microstates belonging to the source.
-    probabilities : NDArray[float]
-        Probability of each microstate to be selected when initializing
-        a trajectory.
+    states : sequence of State
+        Source states.
+    p : numpy.ndarray
+        Probability assigned to each state.
 
-    Methods
-    -------
-    random_sample
+    Examples
+    --------
+    Single state:
+
+    >>> import westpa
+    >>> westpa.Source(westpa.State(label='a'))
+    Source([State(label='a')], p=[1.0])
+
+    Two states with equal probabilities:
+
+    >>> states = [westpa.State(label='a'), westpa.State(label='b')]
+    >>> westpa.Source(states)
+    Source([State(label='a'), State(label='b')], p=[0.5, 0.5])
+
+    Two states with different probabilities:
+
+    >>> westpa.Source(states, p=[0.7, 0.3])
+    Source([State(label='a'), State(label='b')], p=[0.7, 0.3])
+
 
     """
 
-    def __init__(self, microstates, probabilities=None):
-        self.microstates = [x if isinstance(x, str) else np.asarray(x) for x in microstates]
-
-        if probabilities is None:
-            probabilities = np.ones(len(microstates))
+    def __init__(self, states, p=None):
+        if isinstance(states, State):
+            states = [states]
         else:
-            probabilities = np.fromiter(probabilities, dtype=float)
-            if len(probabilities) != len(microstates):
-                raise ValueError("length of 'probabilities' must match length of 'microstates'")
-        probabilities /= probabilities.sum()
+            states = list(states)
+            if not all(isinstance(item, State) for item in states):
+                raise TypeError("items in 'states' must be westpa.State objects")
 
-        self.probabilities = probabilities
+        if p is None:
+            p = np.ones(len(states))
+        else:
+            p = np.asarray(p, dtype=float)
+            if len(p) != len(states):
+                raise ValueError("length of 'p' must match number of states")
+        p /= p.sum()
 
-    def random_sample(self, k, seed=None):
-        """Generate a random sample of microstates from the source.
-
-        Parameters
-        ----------
-        k : int
-            Number of states to draw.
-        seed : int | Sequence[int] | SeedSequence | BitGenerator | Generator, optional
-            Seed to initialize the pseudo-random number generator.
-
-        Returns
-        -------
-        list
-            Random sample of `k` microstates.
-
-        """
-        rng = np.random.default_rng(seed)
-        return rng.choice(self.microstates, p=self.probabilities, size=k).tolist()
+        self.states = states
+        self.p = p
 
     def __repr__(self):
-        args = f'microstates={self.microstates}, probabilities={self.probabilities.tolist()}'
+        args = f'{self.states}, p={self.p.tolist()}'
         return type(self).__name__ + '(' + args + ')'
+
+    def random_sample(self, k, seed=None):
+        rng = np.random.default_rng(seed)
+        return rng.choice(self.states, p=self.p, size=k).tolist()
 
 
 class Sink(Container):
-    """Represents a sink (target) state.
+    """Represents a sink (target) region.
 
     Parameters
     ----------
     indicator : Callable[[Segment], bool]
-        Function that returns True if a given segment terminated in the sink,
-        False otherwise. This function can assume that the segment has completed
-        propagation and (if using a progress coordinate) that its ``pcoord``
-        attribute has been set.
+        Function that returns True if a given trajectory segment reached the
+        sink, False otherwise. This function may assume that the segment has
+        completed propagation and that its ``pcoord`` attribute has been set.
 
     Attributes
     ----------
@@ -761,11 +771,11 @@ class Sink(Container):
 
     Examples
     --------
-    Create a sink containing segments with a final (1-D) progress coordinate
-    value greater than 1:
+    Create a sink containing segments with final (``-1``), first-dimension
+    (``0``) progress coordinate values greater than one:
 
     >>> import westpa
-    >>> sink = westpa.Sink(lambda segment: segment.pcoord[-1, 0] > 1)
+    >>> sink = westpa.Sink(lambda segment: segment.pcoord[-1, 0] > 1.0)
 
     Test for membership:
 

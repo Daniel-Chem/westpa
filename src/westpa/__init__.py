@@ -1,4 +1,5 @@
 __all__ = [
+    'State',
     'Segment',
     'split',
     'merge',
@@ -34,6 +35,7 @@ from .core.binning import (
 )
 from .core.binning.assign import BinMapper
 
+from ._state import State
 from ._api import split, merge, HuberKimResampler, Simulation, Source, Sink
 
 try:

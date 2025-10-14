@@ -103,16 +103,12 @@ class BinMapper:
     def map(self, segments):
         """Group trajectory segments into bins.
 
-        By default, if the segments have ``pcoord`` values, this method calls
-        :meth:`assign` on the final progress coordinate points (i.e.,
-        ``[s.pcoord[-1] for s in segments]``). If the segments don't have
-        ``pcoord`` values, but their ``endpoint`` values are scalars or 1-D arrays,
-        this method calls :meth:`assign()` on the final microstates (i.e.,
-        ``[numpy.atleast_1d(s.endpoint) for s in segments]``).
+        The base implementation of this method calls :meth:`assign` on the
+        final progress coordinate points (i.e., ``[s.pcoord[-1] for s in segments]``).
 
         Parameters
         ----------
-        segments : Iterable[Segment]
+        segments : iterable of Segment
             Set of propagated trajectory segments.
 
         Returns
@@ -120,34 +116,22 @@ class BinMapper:
         Mapping[int, Set[Segment]]
             Populated bins, keyed by bin index.
 
-        Raises
-        ------
-        NotImplementedError
-            By default. Subclasses must override this method or implement :meth:`assign`.
-
         """
         segments = list(segments)
-
-        if segments[0].pcoord is not None:
-            coords = np.array([s.pcoord[-1] for s in segments])
-        elif isinstance(segments[0].endpoint, np.ndarray) and segments[0].endpoint.ndim < 2:
-            coords = np.array([np.atleast_1d(s.endpoint) for s in segments])
-        else:
-            raise ValueError("'endpoint' must be a scalar or 1-D array when 'pcoord' is missing")
-
+        coords = np.array([s.pcoord[-1] for s in segments])
         bins = defaultdict(set)
-        for i, segment in zip(self.assign(coords), segments):
-            bins[i].add(segment)
-
+        for index, segment in zip(self.assign(coords), segments):
+            bins[index].add(segment)
         return bins
 
     def assign(self, coords, mask=None, output=None):
-        """Assign segment coordinates to bins.
+        """Assign points in a coordinate space to bins.
 
         Raises
         ------
         NotImplementedError
-            By default.
+            By default. Subclasses may implement this method or directly
+            override :meth:`map`.
 
         """
         raise NotImplementedError()

@@ -7,6 +7,7 @@ analyzing weighted ensemble (WE) simulations from Python programs.
 .. toctree::
    :maxdepth: 1
 
+   states
    segments
    propagators
    resamplers

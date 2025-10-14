@@ -6,6 +6,8 @@ from collections import UserDict
 
 import numpy as np
 
+from .._state import State
+
 
 class _AuxiliaryData(UserDict):
     # Custom dictionary used to implement validation for Segment.data.
@@ -29,20 +31,20 @@ class Segment:
     Attributes
     ----------
     weight : float
-    initpoint : ndarray | str
-    endpoint : ndarray | str, optional
-    pcoord : ndarray, optional
-    data : MutableMapping[str, ndarray]
+    initial_state : :class:`~westpa.State`
+    final_state : :class:`~westpa.State` or None
+    pcoord : numpy.ndarray or None
+    data : MutableMapping[str, numpy.ndarray]
     walltime : float
     cputime : float
     n_iter : int
     seg_id : int
     parent_id : int
-    wtg_parent_ids : Set[int]
+    wtg_parent_ids : set of int
     initpoint_type : :class:`InitPointType`
     endpoint_type : :class:`EndPointType`
     status : :class:`Status`
-    failure_reason : str, optional
+    failure_reason : str or None
 
     """
 
@@ -67,7 +69,7 @@ class Segment:
         UNSET = 0  #: Null value.
         CONTINUES = 1  #: Indicates that a segment survived resampling (and recycling).
         MERGED = 2  #: Indicates that a segment was pruned during resampling.
-        RECYCLED = 3  #: Indicates that a segment was recycled because it reached the sink (target) state.
+        RECYCLED = 3  #: Indicates that a segment was recycled because it reached the sink (target).
 
     SEG_STATUS_UNSET = Status.UNSET
     SEG_STATUS_PREPARED = Status.PREPARED
@@ -115,8 +117,8 @@ class Segment:
         walltime=None,
         cputime=None,
         data=None,
-        initpoint=None,
-        endpoint=None,
+        initial_state=None,
+        final_state=None,
         failure_reason=None,
     ):
         # NaNs appear sometimes if a WEST program is terminated unexpectedly; replace with zero
@@ -140,8 +142,8 @@ class Segment:
         self._cputime = cputime
         self._data = _AuxiliaryData(data or {})
 
-        self._initpoint = initpoint
-        self._endpoint = endpoint
+        self._initial_state = initial_state
+        self._final_state = final_state
         self._failure_reason = failure_reason
 
     @property
@@ -192,22 +194,24 @@ class Segment:
         self._wtg_parent_ids = value
 
     @property
-    def initpoint(self):
+    def initial_state(self):
         """Initial microstate."""
-        return self._initpoint
+        return self._initial_state
 
     @property
-    def endpoint(self):
-        """Final microstate (set by the propagator). Setting ``endpoint`` marks the segment as complete."""
-        return self._endpoint
+    def final_state(self):
+        """Final microstate (set by the propagator).
 
-    @endpoint.setter
-    def endpoint(self, value):
-        if not isinstance(value, str):
-            value = np.asarray(value)
-            if not np.issubdtype(value.dtype, np.number):
-                raise TypeError("scalar type of 'endpoint' must be numeric")
-        self._endpoint = value
+        Setting ``final_state`` marks the segment as complete.
+
+        """
+        return self._final_state
+
+    @final_state.setter
+    def final_state(self, value):
+        if not isinstance(value, State):
+            raise TypeError("'final_state' must be a westpa.State object")
+        self._final_state = value
         self.status = Segment.Status.COMPLETE
 
     @property
@@ -352,11 +356,8 @@ class Segment:
                 continue
 
             match name:
-                case 'initpoint' | 'endpoint':
-                    if isinstance(value, str):
-                        d[name] = value
-                    else:
-                        d[name] = value.tolist()
+                case 'initial_state' | 'final_state':
+                    d[name] = value.to_dict()
                 case 'pcoord':
                     d[name] = value.tolist()
                 case 'data':
@@ -385,17 +386,8 @@ class Segment:
         kwargs = {}
         for name, value in d.items():
             match name:
-                case 'initpoint' | 'endpoint':
-                    if isinstance(value, str):
-                        kwargs[name] = value
-                    else:
-                        kwargs[name] = np.asarray(value)
-                case 'pcoord':
-                    kwargs[name] = np.asarray(value)
-                case 'data':
-                    kwargs[name] = {k: np.asarray(v) for k, v in value.keys()}
-                case 'wtg_parent_ids':
-                    kwargs[name] = set(value)
+                case 'initial_state' | 'final_state':
+                    kwargs[name] = State.from_dict(value)
                 case _:
                     kwargs[name] = value
         return cls(**kwargs)

@@ -9,8 +9,13 @@ import numpy as np
 import openmm.app
 
 from ._abc import Propagator
+from ..._state import State
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_SEGMENT_DIR_TEMPLATE = 'traj_segs/{n_iter:06d}/{seg_id:06d}'
+DEFAULT_FINAL_STATE_FILENAME = 'final_state.xml'
 
 
 class OpenMMReport:
@@ -56,10 +61,12 @@ class OpenMMReport:
 class OpenMMPropagator(Propagator):
     """Molecular dynamics propagator built on the `OpenMM <https://openmm.org/>`_ toolkit.
 
-    This propagator assumes that segment ``initpoint`` and ``endpoint`` values are
-    absolute paths to XML files containing serialized OpenMM
+    This propagator assumes that states are specified by reference to XML files
+    containing serialized OpenMM
     `State <https://docs.openmm.org/latest/api-python/generated/openmm.openmm.State.html>`_
-    objects.
+    objects, for example::
+
+        state = westpa.State(ref=os.path.abspath('state.xml'))
 
     Parameters
     ----------
@@ -75,18 +82,18 @@ class OpenMMPropagator(Propagator):
         Platform to use for calculations.
     platform_properties : Mapping[str, str], optional
         Platform-specific properties to pass to the simulation context.
-    segment_dir_template : str, default 'traj_segs/{n_iter:06d}/{seg_id:06d}'
-        Template string specifying the directory in which to store output for a
-        given segment. The string must contain ``{n_iter}`` and ``{seg_id}``
-        replacement fields. If a relative path is provided, it is assumed to be
-        relative to the current working directory.
-    endpoint_filename : str, default 'endpoint.xml'
-        Name of the XML file used to store the final microstate of the segment.
     reports : iterable of :class:`OpenMMReport`, optional
         Additional output to report for each segment.
     seed : int or sequence of int, optional
         Seed to initialize the random state. All integer values must be
         non-negative.
+    segment_dir_template : str, default 'traj_segs/{n_iter:06d}/{seg_id:06d}'
+        Template string specifying the directory in which to store output for a
+        given segment. The string must contain ``{n_iter}`` and ``{seg_id}``
+        replacement fields. If a relative path is provided, it is assumed to be
+        relative to the current working directory.
+    final_state_filename : str, default 'final_state.xml'
+        Name of the XML file used to store the final state of a segment.
 
     Examples
     --------
@@ -121,10 +128,10 @@ class OpenMMPropagator(Propagator):
         steps,
         platform=None,
         platform_properties=None,
-        segment_dir_template='traj_segs/{n_iter:06d}/{seg_id:06d}',
-        endpoint_filename="endpoint.xml",
         reports=None,
         seed=None,
+        segment_dir_template=DEFAULT_SEGMENT_DIR_TEMPLATE,
+        final_state_filename=DEFAULT_FINAL_STATE_FILENAME,
     ):
         self.topology = topology
         self.system = system
@@ -133,7 +140,7 @@ class OpenMMPropagator(Propagator):
         self.platform = platform
         self.platform_properties = platform_properties
         self.segment_dir_template = os.path.abspath(segment_dir_template)
-        self.endpoint_filename = endpoint_filename
+        self.final_state_filename = final_state_filename
         self.reports = list(reports or [])
 
         seed = seed if seed is not None else secrets.randbits(128)
@@ -160,7 +167,7 @@ class OpenMMPropagator(Propagator):
             integrator,
             platform=self.platform,
             platformProperties=self.platform_properties,
-            state=segment.initpoint,
+            state=segment.initial_state.ref,
         )
 
         segment_dir = self.segment_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id)
@@ -176,9 +183,9 @@ class OpenMMPropagator(Propagator):
         except openmm.OpenMMException as e:
             segment.mark_as_failed(str(e))
         else:
-            endpoint_file = os.path.join(segment_dir, self.endpoint_filename)
-            simulation.saveState(endpoint_file)
-            segment.endpoint = endpoint_file
+            final_state_file = os.path.join(segment_dir, self.final_state_filename)
+            simulation.saveState(final_state_file)
+            segment.final_state = State(ref=final_state_file)
             segment.walltime = time.time() - start
 
         return segment

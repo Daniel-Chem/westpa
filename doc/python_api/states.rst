@@ -1,0 +1,4 @@
+States
+======
+
+.. autoclass:: westpa.State
