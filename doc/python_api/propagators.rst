@@ -12,7 +12,7 @@ walk on the integers::
     import westpa
 
     def propagate(segment, steps=100):
-        s = segment.initial_state.coord.item()
+        s = segment.initial_state.coord[0]
         for _ in range(steps):
             s += random.choice([-1, 1])
         segment.final_state = westpa.State(coord=[s])
