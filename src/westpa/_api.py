@@ -111,11 +111,10 @@ class Simulation:
         Routine that takes a set of propagated trajectory segments, performs
         resampling (e.g., using the :func:`split` and :func:`merge` functions),
         and returns the resampled segments.
-    pcoord_calculator : Callable[[Segment], array_like], optional
+    pcoord_calculator : Callable[[Segment], Segment], optional
         Routine that computes the progress coordinate time series for a given
-        segment. If `pcoord_calculator` is provided, it will be called for each
-        segment after propagation completes, and its output will be assigned to
-        the segment's  ``pcoord`` attribute prior to resampling.
+        trajectory segment. It should take a propagated segment, sets its
+        ``pcoord`` attribute, and returns the modified segment.
     source : Source, optional
         Source (initial) distribution for source-sink boundary conditions. Must
         be provided together with `sink`.
@@ -409,13 +408,13 @@ class Simulation:
         logger.debug(f'iteration {self.n_iter}: propagating {len(segments)} segments')
 
         futures = set()
-        segment_futures = set()
-        pcoord_fmap = {}  # mapping from pcoord futures to seg_ids
+        propagator_futures = set()
+        pcoord_futures = set()
 
         for segment in segments:
             future = self.work_manager.submit(self.propagator, args=(segment,))
+            propagator_futures.add(future)
             futures.add(future)
-            segment_futures.add(future)
 
         logger.info('Waiting for segments to complete...')
 
@@ -423,8 +422,10 @@ class Simulation:
             future = self.work_manager.wait_any(futures)
             futures.remove(future)
 
-            if future in segment_futures:
-                segment = future.get_result()
+            segment = future.get_result()
+
+            if future in propagator_futures:
+                propagator_futures.remove(future)
 
                 if segment.status != Segment.Status.COMPLETE:
                     logger.error(f'propagation failed for segment {segment.seg_id}')
@@ -434,15 +435,14 @@ class Simulation:
 
                 if self.pcoord_calculator is not None:
                     pcoord_future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
-                    pcoord_fmap[pcoord_future] = segment.seg_id
+                    pcoord_futures.add(pcoord_future)
                     futures.add(pcoord_future)
                 else:
                     self.data_manager.update_segments(self.n_iter, segments=[segment])
 
-            elif future in pcoord_fmap:
-                seg_id = pcoord_fmap[future]
-                segment = self.current_iter_segments[seg_id]
-                segment.pcoord = future.get_result()
+            elif future in pcoord_futures:
+                pcoord_futures.remove(future)
+                self.current_iter_segments[segment.seg_id] = segment
                 self.data_manager.update_segments(self.n_iter, segments=[segment])
 
         logger.debug('done with propagation')
@@ -482,7 +482,7 @@ class Simulation:
             recycled_segments = set()
             new_initial_states = []
 
-        for segment in self.resampled_segments:
+        for index, segment in enumerate(self.resampled_segments):
             parent = self.current_iter_segments[segment.seg_id]
 
             if segment in recycled_segments:
@@ -495,11 +495,12 @@ class Simulation:
                 initial_state = parent.final_state
 
             new_segment = Segment(
+                n_iter=segment.n_iter + 1,
+                seg_id=index,
                 weight=segment.weight,
-                initial_state=initial_state,
                 parent_id=parent_id,
                 wtg_parent_ids=segment.wtg_parent_ids,
-                n_iter=segment.n_iter + 1,
+                initial_state=initial_state,
                 status=Segment.Status.PREPARED,
             )
             self.next_iter_segments.append(new_segment)
