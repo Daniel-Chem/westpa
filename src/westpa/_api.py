@@ -114,7 +114,7 @@ class Simulation:
     pcoord_calculator : Callable[[Segment], Segment], optional
         Routine that computes the progress coordinate time series for a given
         trajectory segment. It should take a propagated segment, sets its
-        ``pcoord`` attribute, and returns the modified segment.
+        ``pcoord`` attribute, and return the modified segment.
     source : Source, optional
         Source (initial) distribution for source-sink boundary conditions. Must
         be provided together with `sink`.
