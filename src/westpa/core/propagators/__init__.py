@@ -1,6 +1,6 @@
 import itertools
 
-from ._abc import Propagator
+from .abc import Propagator
 
 
 def blocked_iter(blocksize, iterable, fillvalue=None):

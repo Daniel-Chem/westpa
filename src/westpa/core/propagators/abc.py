@@ -1,6 +1,6 @@
 import abc
 
-from ..segment import Segment
+from westpa.core.segment import Segment
 
 
 class Propagator(abc.ABC):

@@ -8,8 +8,8 @@ import time
 import numpy as np
 import openmm.app
 
-from ._abc import Propagator
-from ..._state import State
+from .abc import Propagator
+from westpa._state import State
 
 logger = logging.getLogger(__name__)
 

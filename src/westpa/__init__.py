@@ -23,6 +23,11 @@ __all__ = [
     '_rc',
 ]
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+from ._state import State
 from .core.segment import Segment
 from .core.binning import (
     FuncBinMapper,
@@ -34,9 +39,9 @@ from .core.binning import (
     MABBinMapper,
 )
 from .core.binning.assign import BinMapper
-
-from ._state import State
-from ._api import split, merge, HuberKimResampler, Simulation, Source, Sink
+from .core.resamplers.operations import split, merge
+from .core.resamplers.huber_kim import HuberKimResampler
+from ._api import Simulation, Source, Sink
 
 try:
     from .core.propagators._openmm import OpenMMPropagator, OpenMMReport
