@@ -101,7 +101,7 @@ class BinMapper:
         return '<{} at 0x{:x} with {:d} bins>'.format(self.__class__.__name__, id(self), self.nbins or 0)
 
     def map(self, segments):
-        """Group trajectory segments into bins.
+        """Map trajectory segments to bins.
 
         The base implementation of this method calls :meth:`assign` on the
         final progress coordinate points (i.e., ``[s.pcoord[-1] for s in segments]``).
@@ -113,7 +113,7 @@ class BinMapper:
 
         Returns
         -------
-        Mapping[int, Set[Segment]]
+        bins_by_index : Mapping[int, Set[Segment]]
             Populated bins, keyed by bin index.
 
         """
@@ -126,6 +126,23 @@ class BinMapper:
 
     def assign(self, coords, mask=None, output=None):
         """Assign points in a coordinate space to bins.
+
+        Parameters
+        ----------
+        coords : numpy.ndarray
+            Coordinates of each point.
+        mask : numpy.ndarray, optional
+            Boolean array indicating which points to assign to bins (True)
+            and which points to ignore (False). By default, all points are
+            assigned to bins.
+        output : numpy.ndarray, optional
+            16-bit unsigned integer array to use for output. If not provided,
+            a new output array will be created.
+
+        Returns
+        -------
+        output : numpy.ndarray
+            Bin index assigned to each (unmasked) point.
 
         Raises
         ------
