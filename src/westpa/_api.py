@@ -12,13 +12,12 @@ from datetime import timedelta
 
 import numpy as np
 
-from .core.systems import WESTSystem
-from .core.data_manager import WESTDataManager
 from .core.sim_manager import PropagationError
 from .core.segment import Segment
 from .core.we_driver import ConsistencyError
 from .work_managers import SerialWorkManager
 from .work_managers.core import WorkManager
+from ._data_manager import DataManager
 from ._state import State
 
 logger = logging.getLogger(__name__)
@@ -153,9 +152,7 @@ class Simulation:
         sink=None,
         work_manager=None,
     ):
-        self.data_manager = WESTDataManager()
-        self.data_manager.we_h5filename = datafile
-        self.data_manager.system = WESTSystem()
+        self.data_manager = DataManager(datafile)
 
         self.propagator = propagator
         self.resampler = resampler
@@ -249,10 +246,6 @@ class Simulation:
             )
             for index, (state, weight) in enumerate(zip(initial_states, weights))
         ]
-
-        # these h5 groups are required by data_manager.prepare_iteration()
-        self.data_manager.create_ibstate_group([])
-        self.data_manager.save_target_states([])
 
         self.data_manager.prepare_iteration(n_iter=1, segments=self.current_iter_segments)
         self.data_manager.current_iteration = 1
