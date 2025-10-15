@@ -130,7 +130,7 @@ EXTRAS_REQUIRE = {
     "openmm": ["openmm"],
 }
 
-EXTRAS_REQUIRE["dev"] = EXTRAS_REQUIRE["tests"] + ["pre-commit", "sphinx", "pydata-sphinx-theme"]
+EXTRAS_REQUIRE["dev"] = EXTRAS_REQUIRE["tests"] + ["pre-commit", "sphinx", "pydata-sphinx-theme", "numpydoc"]
 
 
 metadata = dict(
