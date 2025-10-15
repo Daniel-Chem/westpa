@@ -9,5 +9,5 @@ class Propagator(abc.ABC):
     @abc.abstractmethod
     def __call__(self, segment: Segment) -> Segment:
         """Run dynamics for a given segment."""
-        segment.endpoint = segment.initpoint  # no operation
+        segment.final_state = segment.initial_state  # no operation
         return segment
