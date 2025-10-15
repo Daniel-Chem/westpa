@@ -39,11 +39,12 @@ class Simulation:
         trajectory segment. It should take a propagated segment, sets its
         ``pcoord`` attribute, and return the modified segment.
     source : Source, optional
-        Source (initial) distribution for source-sink boundary conditions. Must
-        be provided together with `sink`.
+        Source (initial) distribution according to which walkers that reach
+        the `sink` are re-initiated (recycled). Must be provided together with
+        `sink`.
     sink : Sink, optional
-        Sink (target) state for source-sink boundary conditions. Must be provided
-        together with `source`.
+        Sink (target) region from which walkers are recycled according the
+        `source` distribution. Must be provided together with `source`.
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator` and `pcoord_calculator`.
         By default, calls are executed serially.
