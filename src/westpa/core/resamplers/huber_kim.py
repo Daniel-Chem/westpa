@@ -72,6 +72,7 @@ class HuberKimResampler(Resampler):
         seed = seed if seed is not None else secrets.randbits(128)
         logger.info(f'{seed=}')
         self.rng = np.random.default_rng(seed)
+        self.seed = seed
 
     def _update_bins(self, bin_mapper, bin_target_counts):
         if isinstance(bin_target_counts, int):
