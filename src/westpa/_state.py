@@ -5,23 +5,23 @@ class State:
     """Describes a specific configuration (i.e., a microstate) of the system being simulated.
 
     States may be created by providing a coordinate tuple, a reference to a
-    file containing coordinate data, or a unique label. At least one parameter
-    must be provided.
+    file containing coordinate data, or a unique identifier. At least one
+    parameter must be provided.
 
     Parameters
     ----------
     coord : 1-D array-like, optional
         Coordinate tuple.
-    ref : str, optional
+    file : str, optional
         Reference (e.g., an absolute path or URI) to a file containing coordinate data.
-    label : str, optional
-        Unique label or identifier.
+    id : str or int, optional
+        Unique identifier.
 
     Attributes
     ----------
     coord : numpy.ndarray or None
-    ref : str or None
-    label : str or None
+    file : str or None
+    id : str, int, or None
 
     Examples
     --------
@@ -34,33 +34,36 @@ class State:
 
     Coordinates stored in a local file:
 
-    >>> westpa.State(ref='/path/to/file.xyz')
-    State(ref='/path/to/file.xyz')
+    >>> westpa.State(file='/path/to/file.xyz')
+    State(file='/path/to/file.xyz')
 
-    Discrete system with integer state labels:
+    Discrete system with integer state IDs:
 
-    >>> westpa.State(label='0')
-    State(label='0')
+    >>> westpa.State(id=0)
+    State(id=0)
 
     """
 
-    def __init__(self, *, coord=None, ref=None, label=None):
-        if label is None and coord is None and ref is None:
-            raise ValueError("'coord', 'ref', or 'label' must be provided")
+    def __init__(self, *, coord=None, file=None, id=None):
+        if coord is None and file is None and id is None:
+            raise ValueError("'coord', 'file', or 'id' must be provided")
 
         if coord is not None:
             coord = np.asarray(coord)
             if not coord.ndim == 1:
                 raise ValueError("'coord' must be a 1-D array")
 
+        if id is not None and not isinstance(id, (str, int)):
+            raise TypeError("'id' must be a string or integer")
+
         self._coord = coord
-        self._ref = str(ref) if ref is not None else None
-        self._label = str(label) if label is not None else None
+        self._file = str(file) if file is not None else None
+        self._id = id
 
     @property
-    def label(self):
-        """State label."""
-        return self._label
+    def id(self):
+        """State ID."""
+        return self._id
 
     @property
     def coord(self):
@@ -68,9 +71,9 @@ class State:
         return self._coord.copy() if self._coord is not None else None
 
     @property
-    def ref(self):
-        """Reference to a file containing coordinate data."""
-        return self._ref
+    def file(self):
+        """File containing coordinate data."""
+        return self._file
 
     def __repr__(self):
         args = ', '.join(f'{k}={v!r}' for k, v in self.to_dict().items())
@@ -78,7 +81,7 @@ class State:
 
     def to_dict(self):
         d = {}
-        for name in ('label', 'coord', 'ref'):
+        for name in ('coord', 'file', 'id'):
             if (value := getattr(self, name)) is not None:
                 if name == 'coord':
                     value = value.tolist()

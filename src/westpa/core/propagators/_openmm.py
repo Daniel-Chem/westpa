@@ -66,7 +66,7 @@ class OpenMMPropagator(Propagator):
     `State <https://docs.openmm.org/latest/api-python/generated/openmm.openmm.State.html>`_
     objects, for example::
 
-        state = westpa.State(ref=os.path.abspath('state.xml'))
+        state = westpa.State(file=os.path.abspath('state.xml'))
 
     Parameters
     ----------
@@ -167,7 +167,7 @@ class OpenMMPropagator(Propagator):
             integrator,
             platform=self.platform,
             platformProperties=self.platform_properties,
-            state=segment.initial_state.ref,
+            state=segment.initial_state.file,
         )
 
         segment_dir = self.segment_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id)
@@ -185,7 +185,7 @@ class OpenMMPropagator(Propagator):
         else:
             final_state_file = os.path.join(segment_dir, self.final_state_filename)
             simulation.saveState(final_state_file)
-            segment.final_state = State(ref=final_state_file)
+            segment.final_state = State(file=final_state_file)
             segment.walltime = time.time() - start
 
         return segment
