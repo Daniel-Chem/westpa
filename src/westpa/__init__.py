@@ -15,6 +15,7 @@ __all__ = [
     'Simulation',
     'Source',
     'Sink',
+    'Propagator',
     'OpenMMPropagator',
     'OpenMMReport',
     'WESTSystem',
@@ -39,6 +40,7 @@ from .core.binning import (
     MABBinMapper,
 )
 from .core.binning.assign import BinMapper
+from .core.propagators.base import Propagator
 from .core.resamplers.operations import split, merge
 from .core.resamplers.huber_kim import HuberKimResampler
 from ._api import Simulation, Source, Sink

@@ -1,4 +1,5 @@
 import copy
+import itertools
 import logging
 import operator
 import os
@@ -19,6 +20,19 @@ from ._state import State
 logger = logging.getLogger(__name__)
 
 
+# TODO: Replace with itertools.batched when we require Python >=3.12.
+# The following rough equivalent is copied from https://docs.python.org/3/library/itertools.html#itertools.batched.
+def batched(iterable, n, *, strict=False):
+    # batched('ABCDEFG', 3) → ABC DEF G
+    if n < 1:
+        raise ValueError('n must be at least one')
+    iterator = iter(iterable)
+    while batch := tuple(itertools.islice(iterator, n)):
+        if strict and len(batch) != n:
+            raise ValueError('batched(): incomplete batch')
+        yield batch
+
+
 class Simulation:
     """Interface for initializing and running a weighted ensemble simulation.
 
@@ -26,16 +40,12 @@ class Simulation:
     ----------
     datafile : str
         Path to the HDF5 file used to store simulation data (e.g., ``'west.h5'``).
-    propagator : Callable[[Segment], Segment]
-        Routine that runs dynamics for a given trajectory segment. It should
-        read a segment's ``initial_state``, set its ``final_state``, and return the
-        modified segment.
-    resampler : Callable[[Iterable[Segment]], Iterable[Segment]]
-        Routine that takes a set of propagated trajectory segments, performs
-        resampling (e.g., using the :func:`split` and :func:`merge` functions),
-        and returns the resampled segments.
+    propagator : Propagator
+        Routine that propagates the system forward in time.
+    resampler : Resampler
+        Routine that performs weighted ensemble resampling.
     pcoord_calculator : Callable[[Segment], Segment], optional
-        Routine that computes the progress coordinate time series for a given
+        Routine that computes the progress coordinate(s) for a given
         trajectory segment. It should take a propagated segment, sets its
         ``pcoord`` attribute, and return the modified segment.
     source : Source, optional
@@ -76,6 +86,7 @@ class Simulation:
         source=None,
         sink=None,
         work_manager=None,
+        propagator_batch_size=1,
     ):
         self.data_manager = DataManager(datafile)
 
@@ -90,6 +101,7 @@ class Simulation:
         self.sink = sink
 
         self.work_manager = work_manager or SerialWorkManager()
+        self.propagator_batch_size = propagator_batch_size
 
         self.current_iter_segments = []
         self.resampled_segments = []  # populated by _run_we()
@@ -110,6 +122,19 @@ class Simulation:
         if not isinstance(value, WorkManager):
             raise TypeError("'work_manager' must be a WorkManager object")
         self._work_manager = value
+
+    @property
+    def propagator_batch_size(self):
+        """Maximum number of segments per propagation task."""
+        return self._propagator_batch_size
+
+    @propagator_batch_size.setter
+    def propagator_batch_size(self, value):
+        if not isinstance(value, int):
+            raise TypeError("'propagator_batch_size' must be an integer")
+        elif value < 1:
+            raise ValueError("'propagator_batch_size' must be at least 1")
+        self._propagator_batch_size = value
 
     @property
     def n_iter(self):
@@ -329,8 +354,8 @@ class Simulation:
         propagator_futures = set()
         pcoord_futures = set()
 
-        for segment in segments:
-            future = self.work_manager.submit(self.propagator, args=(segment,))
+        for batch in batched(segments, self.propagator_batch_size):
+            future = self.work_manager.submit(self.propagator, args=(batch,))
             propagator_futures.add(future)
             futures.add(future)
 
@@ -340,26 +365,28 @@ class Simulation:
             future = self.work_manager.wait_any(futures)
             futures.remove(future)
 
-            segment = future.get_result()
-
             if future in propagator_futures:
                 propagator_futures.remove(future)
+                batch = future.get_result()
 
-                if segment.status != Segment.Status.COMPLETE:
-                    logger.error(f'propagation failed for segment {segment.seg_id}')
-                    raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
+                for segment in batch:
+                    if segment.status != Segment.Status.COMPLETE:
+                        logger.error(f'propagation failed for segment {segment.seg_id}')
+                        raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
 
-                self.current_iter_segments[segment.seg_id] = segment
+                    self.current_iter_segments[segment.seg_id] = segment
 
                 if self.pcoord_calculator is not None:
-                    pcoord_future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
-                    pcoord_futures.add(pcoord_future)
-                    futures.add(pcoord_future)
+                    for segment in batch:
+                        pcoord_future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
+                        pcoord_futures.add(pcoord_future)
+                        futures.add(pcoord_future)
                 else:
-                    self.data_manager.update_segments(self.n_iter, segments=[segment])
+                    self.data_manager.update_segments(self.n_iter, segments=batch)
 
             elif future in pcoord_futures:
                 pcoord_futures.remove(future)
+                segment = future.get_result()
                 self.current_iter_segments[segment.seg_id] = segment
                 self.data_manager.update_segments(self.n_iter, segments=[segment])
 

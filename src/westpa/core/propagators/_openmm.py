@@ -2,13 +2,12 @@ import copy
 import inspect
 import logging
 import os
-import secrets
 import time
 
 import numpy as np
 import openmm.app
 
-from .abc import Propagator
+from .base import Propagator
 from westpa._state import State
 
 logger = logging.getLogger(__name__)
@@ -84,9 +83,6 @@ class OpenMMPropagator(Propagator):
         Platform-specific properties to pass to the simulation context.
     reports : iterable of :class:`OpenMMReport`, optional
         Additional output to report for each segment.
-    seed : int or sequence of int, optional
-        Seed to initialize the random state. All integer values must be
-        non-negative.
     segment_dir_template : str, default 'traj_segs/{n_iter:06d}/{seg_id:06d}'
         Template string specifying the directory in which to store output for a
         given segment. The string must contain ``{n_iter}`` and ``{seg_id}``
@@ -94,6 +90,8 @@ class OpenMMPropagator(Propagator):
         relative to the current working directory.
     final_state_filename : str, default 'final_state.xml'
         Name of the XML file used to store the final state of a segment.
+    seed : int, optional
+        Seed to initialize the random state. Must be non-negative.
 
     Examples
     --------
@@ -116,7 +114,6 @@ class OpenMMPropagator(Propagator):
     ...     steps=1000,
     ... )
 
-
     """
 
     def __init__(
@@ -129,9 +126,9 @@ class OpenMMPropagator(Propagator):
         platform=None,
         platform_properties=None,
         reports=None,
-        seed=None,
         segment_dir_template=DEFAULT_SEGMENT_DIR_TEMPLATE,
         final_state_filename=DEFAULT_FINAL_STATE_FILENAME,
+        seed=None,
     ):
         self.topology = topology
         self.system = system
@@ -142,12 +139,9 @@ class OpenMMPropagator(Propagator):
         self.segment_dir_template = os.path.abspath(segment_dir_template)
         self.final_state_filename = final_state_filename
         self.reports = list(reports or [])
+        super().__init__(seed=seed)
 
-        seed = seed if seed is not None else secrets.randbits(128)
-        logger.info(f'{seed=}')
-        self.seed = seed
-
-    def __call__(self, segment):
+    def propagate(self, segment):
         start = time.time()
 
         # see https://numpy.org/doc/2.2/reference/random/parallel.html#sequence-of-integer-seeds
@@ -189,8 +183,3 @@ class OpenMMPropagator(Propagator):
             segment.walltime = time.time() - start
 
         return segment
-
-    def __repr__(self):
-        parameters = inspect.signature(self.__init__).parameters
-        args = ', '.join(f'{name}={getattr(self, name)!r}' for name in parameters)
-        return type(self).__name__ + '(' + args + ')'
