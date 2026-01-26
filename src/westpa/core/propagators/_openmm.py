@@ -91,7 +91,7 @@ class OpenMMPropagator(Propagator):
     final_state_filename : str, default 'final_state.xml'
         Name of the XML file used to store the final state of a segment.
     seed : int, optional
-        Seed to initialize the random state. Must be non-negative.
+        Random seed. Must be non-negative.
 
     Examples
     --------
@@ -183,3 +183,8 @@ class OpenMMPropagator(Propagator):
             segment.walltime = time.time() - start
 
         return segment
+
+    def __repr__(self):
+        parameters = inspect.signature(self.__init__).parameters
+        args = ', '.join(f'{name}={getattr(self, name)!r}' for name in parameters)
+        return type(self).__name__ + '(' + args + ')'

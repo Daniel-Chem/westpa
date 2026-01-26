@@ -1,3 +1,11 @@
+__all__ = [
+    "Propagator",
+    "BatchedPropagator",
+]
+
+from .base import Propagator, BatchedPropagator
+
+
 class WESTPropagator:
     def __init__(self, rc=None):
         # For maximum flexibility, the basis states and initial states valid

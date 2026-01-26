@@ -1,8 +1,7 @@
 __all__ = [
     'State',
     'Segment',
-    'split',
-    'merge',
+    'Resampler',
     'HuberKimResampler',
     'BinMapper',
     'FuncBinMapper',
@@ -16,6 +15,7 @@ __all__ = [
     'Source',
     'Sink',
     'Propagator',
+    'BatchedPropagator',
     'OpenMMPropagator',
     'OpenMMReport',
     'WESTSystem',
@@ -40,9 +40,8 @@ from .core.binning import (
     MABBinMapper,
 )
 from .core.binning.assign import BinMapper
-from .core.propagators.base import Propagator
-from .core.resamplers.operations import split, merge
-from .core.resamplers.huber_kim import HuberKimResampler
+from .core.propagators import Propagator, BatchedPropagator
+from .core.resamplers import Resampler, HuberKimResampler
 from ._api import Simulation, Source, Sink
 
 try:

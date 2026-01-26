@@ -1,28 +1,48 @@
-import inspect
+import abc
 import logging
 import secrets
 
 logger = logging.getLogger(__name__)
 
 
-class Propagator:
-    """Base class for propagators."""
+class Propagator(abc.ABC):
+    """Defines a method for propagating a single segment.
+
+    Parameters
+    ----------
+    seed : int, optional
+        Random seed. Must be non-negative.
+
+    Attributes
+    ----------
+    seed : int
+
+    """
 
     def __init__(self, *, seed=None):
         self.seed = seed
 
     @property
     def seed(self):
+        """Random seed."""
         return self._seed
 
     @seed.setter
     def seed(self, value):
-        seed = value if value is not None else secrets.randbits(128)
+        if value is None:
+            seed = secrets.randbits(128)
+        else:
+            if not isinstance(value, int):
+                raise TypeError("'seed' must be an integer")
+            if value < 0:
+                raise ValueError("'seed' must be non-negative")
+            seed = value
         logger.info(f'{seed=}')
         self._seed = seed
 
+    @abc.abstractmethod
     def propagate(self, segment):
-        """Propagate a single trajectory segment.
+        """Propagate a single segment.
 
         Parameters
         ----------
@@ -35,28 +55,34 @@ class Propagator:
             Propagated segment.
 
         """
-        raise NotImplementedError
+        ...
 
+    def __call__(self, segments):
+        return [self.propagate(segment) for segment in segments]
+
+
+class BatchedPropagator(Propagator):
+    """Defines a method for propagating a batch of segments simultaneously."""
+
+    @abc.abstractmethod
     def propagate_batch(self, segments):
-        """Propagate a batch of trajectory segments.
+        """Propagate a batch of segments.
 
         Parameters
         ----------
-        segments : iterable of Segment
+        segments : sequence of Segment
             Segments to propagate.
 
         Returns
         -------
-        iterable of Segments
+        sequence of Segment
             Propagated segments.
 
         """
-        return [self.propagate(segment) for segment in segments]
+        ...
+
+    def propagate(self, segment):
+        return self.propagate_batch([segment])[0]
 
     def __call__(self, segments):
         return self.propagate_batch(segments)
-
-    def __repr__(self):
-        parameters = inspect.signature(self.__init__).parameters
-        args = ', '.join(f'{name}={getattr(self, name)!r}' for name in parameters)
-        return type(self).__name__ + '(' + args + ')'

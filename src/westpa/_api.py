@@ -11,7 +11,6 @@ import numpy as np
 
 from .core.sim_manager import PropagationError
 from .core.segment import Segment
-from .core.we_driver import ConsistencyError
 from .work_managers import SerialWorkManager
 from .work_managers.core import WorkManager
 from ._data_manager import DataManager
@@ -283,7 +282,7 @@ class Simulation:
         self.data_manager.close_backing()
 
         logger.info('%s' % time.asctime())
-        logger.info('WEST run complete.')
+        logger.info('WESTPA run complete.')
 
     def _report_statistics(self, save_summary=False):
         seg_probs = np.fromiter(
@@ -410,14 +409,6 @@ class Simulation:
             for segment in self.current_iter_segments
         ]
         self.resampled_segments = list(self.resampler(replicas))
-
-        weights = np.array([segment.weight for segment in self.resampled_segments])
-        if (weights <= 0).any():
-            raise ConsistencyError('segment weights must be greater than 0')
-        if (weights > 1).any():
-            raise ConsistencyError('segment weights must be less than or equal to 1')
-        if not np.isclose(weights.sum(), 1):  # TODO: What should the tolerance be here?
-            raise ConsistencyError('segment weights must sum to 1')
 
     def _prepare_next_iteration(self):
         if self.sink is not None:

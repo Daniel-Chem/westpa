@@ -48,7 +48,7 @@ def merge(segments, seed=None):
     ----------
     segments : iterable of Segment
         Segments to merge.
-    seed : int or sequence of int, optional
+    seed : int, sequence of int, SeedSequence, BitGenerator, or Generator, optional
         Seed to initialize the random state.
 
     Returns

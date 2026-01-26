@@ -2,12 +2,10 @@ import inspect
 import logging
 import math
 import operator
-import secrets
 
 import numpy as np
 
-from .abc import Resampler
-from .operations import split, merge
+from .base import Resampler
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +34,9 @@ class HuberKimResampler(Resampler):
         Minimum allowed weight.
     max_weight : float, default 1.0
         Maximum allowed weight.
-    seed : int or sequence of int, optional
-        Seed to initialize the random state. All integer values must be
-        non-negative.
+    seed : int, sequence of int, or numpy.random.Generator, optional
+        Seed to initialize the pseudo-random number generator. Integer values
+        must be non-negative.
 
     References
     ----------
@@ -69,10 +67,7 @@ class HuberKimResampler(Resampler):
         self.split_threshold = split_threshold
         self.merge_cutoff = merge_cutoff
 
-        seed = seed if seed is not None else secrets.randbits(128)
-        logger.info(f'{seed=}')
-        self.rng = np.random.default_rng(seed)
-        self.seed = seed
+        super().__init__(seed=seed)
 
     def _update_bins(self, bin_mapper, bin_target_counts):
         if isinstance(bin_target_counts, int):
@@ -88,7 +83,7 @@ class HuberKimResampler(Resampler):
         self.bin_mapper = bin_mapper
         self.bin_target_counts = bin_target_counts
 
-    def __call__(self, segments):
+    def resample(self, segments):
         bins_by_index = self.bin_mapper.map(segments)
 
         weight_getter = operator.attrgetter('weight')
@@ -107,7 +102,7 @@ class HuberKimResampler(Resampler):
             for segment in segments[to_split]:
                 bin_.remove(segment)
                 m = int(math.ceil(segment.weight / ideal_weight))
-                new_segments = split(segment, m)
+                new_segments = self.split(segment, m)
                 bin_.update(new_segments)
             segments = segments[~to_split]
             weights = weights[~to_split]
@@ -117,7 +112,7 @@ class HuberKimResampler(Resampler):
             to_merge = cumulative_weight <= self.merge_cutoff * ideal_weight
             while sum(to_merge) >= 2:
                 bin_.difference_update(segments[to_merge])
-                new_segment = merge(segments[to_merge], seed=self.rng)
+                new_segment = self.merge(segments[to_merge])
                 bin_.add(new_segment)
                 segments = segments[~to_merge]
                 cumulative_weight = cumulative_weight[~to_merge] - new_segment.weight
@@ -129,13 +124,13 @@ class HuberKimResampler(Resampler):
                     logger.debug('adjusting counts by splitting')
                     segments = sorted(bin_, key=weight_getter)
                     bin_.remove(segments[-1])
-                    new_segments = split(segments[-1])  # split largest walker in 2
+                    new_segments = self.split(segments[-1])  # split largest walker in 2
                     bin_.update(new_segments)
                 while len(bin_) > target_count:
                     logger.debug('adjusting counts by merging')
                     segments = sorted(bin_, key=weight_getter)
                     bin_.difference_update(segments[:2])  # merge 2 smallest walkers
-                    new_segment = merge(segments[:2], seed=self.rng)
+                    new_segment = self.merge(segments[:2])
                     bin_.add(new_segment)
 
             # Apply weight thresholds.
@@ -145,12 +140,12 @@ class HuberKimResampler(Resampler):
             for segment in segments[to_split]:
                 bin_.remove(segment)
                 m = int(math.ceil(segment.weight / self.max_weight))
-                new_segments = split(segment, m)
+                new_segments = self.split(segment, m)
                 bin_.update(new_segments)
             to_merge = weights < self.min_weight
             while sum(to_merge) >= 2:
                 bin_.difference_update(segments[to_merge])
-                new_segment = merge(segments[to_merge], seed=self.rng)
+                new_segment = self.merge(segments[to_merge])
                 bin_.add(new_segment)
                 segments = np.array(sorted(bin_, key=weight_getter))
                 weights = np.array(list(map(weight_getter, segments)))
