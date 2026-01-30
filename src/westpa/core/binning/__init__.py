@@ -2,6 +2,7 @@ from . import _assign
 from . import assign, bins
 
 from .assign import (
+    BinMapper,
     NopMapper,
     FuncBinMapper,
     PiecewiseBinMapper,
@@ -30,6 +31,7 @@ __all__ = [
     '_assign',
     'assign',
     'bins',
+    'BinMapper',
     'NopMapper',
     'FuncBinMapper',
     'PiecewiseBinMapper',

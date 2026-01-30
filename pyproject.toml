@@ -47,6 +47,7 @@ dependencies = [
   "tqdm",
   "pandas",
   "tables",
+  "sortedcontainers",
 ]
 
 [project.optional-dependencies]

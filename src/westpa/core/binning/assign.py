@@ -65,8 +65,17 @@ coord_dtype = np.float32
 log = logging.getLogger(__name__)
 
 
+def _default_coord_getter(segment):
+    return segment.pcoord[-1]
+
+
 class BinMapper:
-    """Base class for bin mappers.
+    """Defines a method for grouping trajectory segments into bins.
+
+    Parameters
+    ----------
+    coord_getter : Callable[[Segment], numpy.ndarray], default :func:`~westpa.Segment.final_pcoord`
+        Function that computes the binning coordinate for a given segment.
 
     Attributes
     ----------
@@ -77,9 +86,10 @@ class BinMapper:
 
     hashfunc = hashlib.sha256
 
-    def __init__(self):
+    def __init__(self, *, coord_getter=None):
         self.labels = None
         self.nbins = 0
+        self.coord_getter = coord_getter or _default_coord_getter
 
     def construct_bins(self, type_=Bin):
         '''Construct and return an array of bins of type ``type``'''
@@ -103,9 +113,6 @@ class BinMapper:
     def map(self, segments):
         """Map trajectory segments to bins.
 
-        The base implementation of this method calls :meth:`assign` on the
-        final progress coordinate points (i.e., ``[s.pcoord[-1] for s in segments]``).
-
         Parameters
         ----------
         segments : iterable of Segment
@@ -113,15 +120,15 @@ class BinMapper:
 
         Returns
         -------
-        bins_by_index : Mapping[int, Set[Segment]]
-            Populated bins, keyed by bin index.
+        Mapping[int, Bin]
+            Occupied bins, keyed by bin index.
 
         """
         segments = list(segments)
-        coords = np.array([s.pcoord[-1] for s in segments])
-        bins = defaultdict(set)
-        for index, segment in zip(self.assign(coords), segments):
-            bins[index].add(segment)
+        coords = np.array([self.coord_getter(segment) for segment in segments])
+        bins = defaultdict(Bin)
+        for ibin, segment in zip(self.assign(coords), segments):
+            bins[ibin].add(segment)
         return bins
 
     def assign(self, coords, mask=None, output=None):

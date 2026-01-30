@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 from ._state import State
 from .core.segment import Segment
 from .core.binning import (
+    BinMapper,
     FuncBinMapper,
     PiecewiseBinMapper,
     RectilinearBinMapper,
@@ -39,7 +40,6 @@ from .core.binning import (
     VoronoiBinMapper,
     MABBinMapper,
 )
-from .core.binning.assign import BinMapper
 from .core.propagators import Propagator, BatchedPropagator
 from .core.resamplers import Resampler, HuberKimResampler
 from ._api import Simulation, Source, Sink

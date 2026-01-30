@@ -6,5 +6,5 @@ WESTPA reference
 .. toctree::
    :maxdepth: 2
 
-   python_api/index
+   documentation/python_api/index
    documentation/cli
