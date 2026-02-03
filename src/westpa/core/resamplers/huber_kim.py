@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class HuberKimResampler(Resampler):
-    """Implements the weighted ensemble algorithm of Huber and Kim. [1]_
+    """Implements the weighted ensemble method of Huber and Kim. [1]_
 
     Parameters
     ----------

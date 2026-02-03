@@ -2,6 +2,8 @@ __all__ = [
     'State',
     'Segment',
     'Resampler',
+    'MultinomialResampler',
+    'ResidualResampler',
     'HuberKimResampler',
     'BinMapper',
     'FuncBinMapper',
@@ -41,7 +43,12 @@ from .core.binning import (
     MABBinMapper,
 )
 from .core.propagators import Propagator, BatchedPropagator
-from .core.resamplers import Resampler, HuberKimResampler
+from .core.resamplers import (
+    Resampler,
+    HuberKimResampler,
+    MultinomialResampler,
+    ResidualResampler,
+)
 from ._api import Simulation, Source, Sink
 
 try:

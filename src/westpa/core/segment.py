@@ -392,6 +392,28 @@ class Segment:
                     kwargs[name] = value
         return cls(**kwargs)
 
+    def __replace__(self, /, **changes):  # support copy.replace() in Python >=3.13.
+        parameters = inspect.signature(self.__init__).parameters
+        kwargs = {name: getattr(self, name) for name in parameters}
+        kwargs.update(changes)
+        return type(self)(**kwargs)
+
+    def copy(self, **changes):
+        """Return a copy of the segment.
+
+        Parameters
+        ----------
+        changes : Mapping[str, Any]
+            Attributes to modify.
+
+        Returns
+        -------
+        Segment
+            Copy of the segment with attributes modified according to `changes`.
+
+        """
+        return self.__replace__(**changes)
+
     # TODO: Remove. Use `segment.status.name` in new code.
     status_text = property((lambda s: s.status_names[s.status]))
     endpoint_type_text = property((lambda s: s.endpoint_type_names[s.endpoint_type]))
