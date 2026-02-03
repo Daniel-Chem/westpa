@@ -8,7 +8,6 @@ import secrets
 import numpy as np
 
 from westpa.core.binning import Bin, BinMapper, NopMapper
-from westpa.core.segment import Segment
 from westpa.core.we_driver import ConsistencyError
 
 logger = logging.getLogger(__name__)
@@ -159,20 +158,7 @@ class Resampler(abc.ABC):
             raise ValueError("'m' must be greater than or equal to 2")
 
         new_weight = segment.weight / m
-        new_segments = {
-            Segment(
-                n_iter=segment.n_iter,
-                seg_id=segment.seg_id,
-                weight=new_weight,
-                parent_id=segment.parent_id,
-                wtg_parent_ids=segment.wtg_parent_ids,
-                initial_state=segment.initial_state,
-                final_state=segment.final_state,
-                pcoord=segment.pcoord,
-                data=segment.data,
-            )
-            for _ in range(m)
-        }
+        new_segments = {segment.copy(weight=new_weight) for _ in range(m)}
 
         bin.remove(segment)
         bin.update(new_segments)
@@ -201,17 +187,10 @@ class Resampler(abc.ABC):
         weights = np.array([segment.weight for segment in segments])
         total_weight = weights.sum()
 
-        choice = self.rng.choice(segments, p=weights / total_weight)
-        new_segment = Segment(
-            n_iter=segments[0].n_iter,
-            seg_id=choice.seg_id,
+        segment = self.rng.choice(segments, p=weights / total_weight)
+        new_segment = segment.copy(
             weight=total_weight,
-            parent_id=choice.parent_id,
             wtg_parent_ids=set.union(*(segment.wtg_parent_ids for segment in segments)),
-            initial_state=choice.initial_state,
-            final_state=choice.final_state,
-            pcoord=choice.pcoord,
-            data=choice.data,
         )
 
         bin.difference_update(segments)
