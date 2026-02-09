@@ -45,16 +45,16 @@ class Simulation:
     propagator : Propagator
         Routine for simulating the dynamics of the system.
     pcoord_calculator : Callable[[Segment], Segment]
-        Routine for computing the progress coordinates to a given trajectory
-        segment. It should take a propagated segment, sets its ``pcoord``
-        attribute, and return the modified segment.
+        Routine for computing the progress coordinate(s). It should take a
+        propagated segment, sets its ``pcoord`` attribute, and return the
+        modified segment.
     bin_mapper : BinMapper, optional
-        Method for assigning trajectories to bins. By default, all the
-        trajectories are assigned to a single bin.
+        Routine for grouping trajectories into bins. By default, all the
+        trajectories are grouped into a single bin.
     bin_target_counts : int or sequence of int, default 1
-        Target number of trajectories (allocation) for each bin. If an integer
-        is provided, the value will be applied to all the bins. If a sequence
-        is provided, its length must match ``bin_mapper.nbins``.
+        Target number of trajectories (allocation) for each bin. If passed an
+        integer, the value will be applied to all the bins. If passed a
+        sequence, its length must match ``bin_mapper.nbins``.
     resampler : Resampler, optional
         Routine for resampling the trajectories in each bin. Defaults to
         ``HuberKimResampler()``.
@@ -73,10 +73,12 @@ class Simulation:
     Attributes
     ----------
     propagator : Propagator
-    pcoord_calculator : callable or None
+    pcoord_calculator : callable
     bin_mapper : BinMapper
     bin_target_counts : numpy.ndarray
     resampler : Resampler
+    source : Source
+    sink : Sink
     work_manager : WorkManager
     propagator_batch_size : int
     datafile : str
@@ -120,7 +122,7 @@ class Simulation:
 
         self.propagator = propagator
         self.pcoord_calculator = pcoord_calculator
-        self.update_bins(bin_mapper, bin_target_counts)
+        self.update_bins(bin_mapper or NopMapper(), bin_target_counts)
         self.resampler = resampler or HuberKimResampler()
 
         if source is not None or sink is not None:
@@ -185,12 +187,12 @@ class Simulation:
 
     @property
     def source(self):
-        """Source (initial) distribution."""
+        """Source distribution."""
         return self._source
 
     @property
     def sink(self):
-        """Sink (target) region."""
+        """Sink region."""
         return self._sink
 
     @property
@@ -234,16 +236,15 @@ class Simulation:
 
         Parameters
         ----------
-        mapper : BinMapper or None
-            Bin mapper for assigning trajectory segments to bins. If None,
-            all the segments will be assigned to a single bin.
+        mapper : BinMapper
+            Routine for grouping trajectory segments into bins.
         target_counts : int or sequence of int
-            Target number of trajectories for each bin.
+            Target number of trajectories for each bin. If passed an integer,
+            the value will be applied to all the bins. If passed a sequence,
+            its length must match ``bin_mapper.nbins``.
 
         """
-        if mapper is None:
-            mapper = NopMapper()
-        elif not isinstance(mapper, BinMapper):
+        if not isinstance(mapper, BinMapper):
             raise TypeError("'mapper' must be a BinMapper object")
 
         if isinstance(target_counts, int):
@@ -264,11 +265,9 @@ class Simulation:
         Parameters
         ----------
         source : Source
-            Source distribution according to which walkers that reach the
-            `sink` are re-initiated (recycled).
+            Source (initial) distribution.
         sink : Sink
-            Sink region from which walkers are recycled according to the
-            `source` distribution.
+            Sink (target) region.
 
         """
         if not isinstance(source, Source):
