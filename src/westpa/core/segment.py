@@ -6,11 +6,10 @@ from collections import UserDict
 
 import numpy as np
 
-from .._state import State
+from .state import State
 
 
 class _AuxiliaryData(UserDict):
-    # Custom dictionary used to implement validation for Segment.data.
 
     def __setitem__(self, key, value):
         if not isinstance(key, str):

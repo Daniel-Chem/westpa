@@ -31,8 +31,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from ._state import State
+from .core.state import State
 from .core.segment import Segment
+from .core.propagators import Propagator, BatchedPropagator
 from .core.binning import (
     Bin,
     BinMapper,
@@ -44,14 +45,14 @@ from .core.binning import (
     VoronoiBinMapper,
     MABBinMapper,
 )
-from .core.propagators import Propagator, BatchedPropagator
 from .core.resamplers import (
     Resampler,
     HuberKimResampler,
     MultinomialResampler,
     ResidualResampler,
 )
-from ._api import Simulation, Source, Sink
+from .core.simulation import Simulation
+from .core.source_sink import Source, Sink
 
 try:
     from .core.propagators._openmm import OpenMMPropagator, OpenMMReport

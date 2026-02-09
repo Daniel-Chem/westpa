@@ -4,7 +4,7 @@ from operator import attrgetter
 import numpy as np
 from h5py import h5s
 
-from .core.data_manager import (
+from westpa.core.data_manager import (
     WESTDataManager,
     seg_index_dtype,
     seg_id_dtype,
@@ -12,7 +12,7 @@ from .core.data_manager import (
     normalize_dataset_options,
     require_dataset_from_dsopts,
 )
-from .core.segment import Segment
+from westpa.core.segment import Segment
 
 logger = logging.getLogger(__name__)
 

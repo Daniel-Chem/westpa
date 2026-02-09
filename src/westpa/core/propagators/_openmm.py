@@ -8,7 +8,7 @@ import numpy as np
 import openmm.app
 
 from .base import Propagator
-from westpa._state import State
+from westpa.core.state import State
 
 logger = logging.getLogger(__name__)
 
