@@ -10,8 +10,8 @@ analyzing weighted ensemble (WE) simulations from Python programs.
    states
    segments
    propagators
-   resamplers
    bin_mappers
+   resamplers
    recycling
    simulations
    work_managers

@@ -59,7 +59,7 @@ extensions = [
 ]
 
 autosummary_generate = False
-# autoclass_content = "both"
+autoclass_content = "both"
 autodoc_member_order = "bysource"
 # autodoc_default_flags = ["members", "undoc-members", "show-inheritence", "imported-members"]
 

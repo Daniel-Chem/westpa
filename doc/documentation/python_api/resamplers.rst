@@ -1,14 +1,24 @@
 Resamplers
 ==========
 
-A *resampler* is a callable that takes a set of propagated trajectory segments,
-performs weighted ensemble resampling (e.g., using the :func:`~westpa.split` and
-:func:`~westpa.merge` functions), and returns the set of resampled segments.
+A *resampler* defines a method for resampling (e.g., splitting and merging)
+the trajectory segments in a given bin.
 
-WESTPA provides one built-in resampler type: :class:`~westpa.HuberKimResampler`.
+WESTPA provides three built-in resampler types:
+
+.. autosummary::
+   :nosignatures:
+
+   ~westpa.HuberKimResampler
+   ~westpa.MultinomialResampler
+   ~westpa.ResidualResampler
+
+Custom resampler types may be defined by subclassing the
+:class:`~westpa.Resampler` base class.
+
+.. autoclass:: westpa.Resampler
+   :members: resample, split, merge, __call__
 
 .. autoclass:: westpa.HuberKimResampler
-
-.. autofunction:: westpa.split
-
-.. autofunction:: westpa.merge
+.. autoclass:: westpa.MultinomialResampler
+.. autoclass:: westpa.ResidualResampler
