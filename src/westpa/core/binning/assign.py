@@ -43,7 +43,6 @@ the total number of bins within the mapper.
 import hashlib
 import logging
 import pickle
-from collections import defaultdict
 
 import numpy as np
 
@@ -65,44 +64,39 @@ coord_dtype = np.float32
 log = logging.getLogger(__name__)
 
 
-def _default_coord_getter(segment):
-    return segment.pcoord[-1]
-
-
 class BinMapper:
-    """Defines a method for grouping trajectory segments into bins.
-
-    Parameters
-    ----------
-    coord_getter : Callable[[Segment], numpy.ndarray], default :func:`~westpa.Segment.final_pcoord`
-        Function that computes the binning coordinate for a given segment.
+    """Base class for bin mappers.
 
     Attributes
     ----------
     nbins : int
-        Number of bins to which the bin mapper assigns segments.
+        Number of bins to which the bin mapper assigns trajectories.
 
     """
 
     hashfunc = hashlib.sha256
 
-    def __init__(self, *, coord_getter=None):
+    def __init__(self):
         self.labels = None
         self.nbins = 0
-        self.coord_getter = coord_getter or _default_coord_getter
 
-    def construct_bins(self, type_=Bin):
-        '''Construct and return an array of bins of type ``type``'''
-        return np.array([type_() for _i in range(self.nbins)], dtype=np.object_)
+    def construct_bins(self):
+        # Construct and return a list of :attr:`nbins` empty bins.
+        #
+        # Returns
+        # -------
+        # list of Bin
+        #     List of :attr:`nbins` empty bins.
+        #
+        return [Bin(label=label) for i, label in zip(range(self.nbins), self.labels)]
 
     def pickle_and_hash(self):
-        '''Pickle this mapper and calculate a hash of the result (thus identifying the
-        contents of the pickled data), returning a tuple ``(pickled_data, hash)``.
-        This will raise PickleError if this mapper cannot be pickled, in which case
-        code that would otherwise rely on detecting a topology change must assume
-        a topology change happened, even if one did not.
-        '''
-
+        # Pickle this mapper and calculate a hash of the result (thus identifying the
+        # contents of the pickled data), returning a tuple ``(pickled_data, hash)``.
+        # This will raise PickleError if this mapper cannot be pickled, in which case
+        # code that would otherwise rely on detecting a topology change must assume
+        # a topology change happened, even if one did not.
+        #
         pkldat = pickle.dumps(self, pickle.HIGHEST_PROTOCOL)
         hash = self.hashfunc(pkldat)
         return (pkldat, hash.hexdigest())
@@ -110,55 +104,62 @@ class BinMapper:
     def __repr__(self):
         return '<{} at 0x{:x} with {:d} bins>'.format(self.__class__.__name__, id(self), self.nbins or 0)
 
+    def get_coords(self, segments):
+        # Return the binning coordinates for a set of segments.
+        #
+        # Parameters
+        # ----------
+        # segments : iterable of Segment
+        #     Set of propagated segments.
+        #
+        # Returns
+        # -------
+        # coords : numpy.ndarray
+        #     2-D array of points.
+        #
+        return np.array([segment.pcoord[-1] for segment in segments])
+
+    def assign(self, coords, mask=None, output=None):
+        # Assign bin indices to a set of points.
+        #
+        # Parameters
+        # ----------
+        # coords : numpy.ndarray
+        #     2-D array of points.
+        # mask : numpy.ndarray, optional
+        #     Boolean array indicating which points to assign to bins. By
+        #     default, all points are assigned to bins.
+        # output : numpy.ndarray, optional
+        #     Unsigned integer array to use for output. If not provided, a new
+        #     output array will be created.
+        #
+        # Returns
+        # -------
+        # output : numpy.ndarray
+        #     Bin index assigned to each unmasked point.
+        #
+        raise NotImplementedError()
+
     def map(self, segments):
-        """Map trajectory segments to bins.
+        """Partition a set of trajectory segments into bins.
 
         Parameters
         ----------
         segments : iterable of Segment
-            Set of propagated trajectory segments.
+            Set of propagated segments.
 
         Returns
         -------
-        Mapping[int, Bin]
-            Occupied bins, keyed by bin index.
+        list of Bin
+            Sequence of :attr:`nbins` bins, ordered by index.
 
         """
         segments = list(segments)
-        coords = np.array([self.coord_getter(segment) for segment in segments])
-        bins = defaultdict(Bin)
-        for ibin, segment in zip(self.assign(coords), segments):
-            bins[ibin].add(segment)
+        coords = self.get_coords(segments)
+        bins = self.construct_bins()
+        for i, segment in zip(self.assign(coords), segments):
+            bins[i].add(segment)
         return bins
-
-    def assign(self, coords, mask=None, output=None):
-        """Assign points in a coordinate space to bins.
-
-        Parameters
-        ----------
-        coords : numpy.ndarray
-            Coordinates of each point.
-        mask : numpy.ndarray, optional
-            Boolean array indicating which points to assign to bins (True)
-            and which points to ignore (False). By default, all points are
-            assigned to bins.
-        output : numpy.ndarray, optional
-            16-bit unsigned integer array to use for output. If not provided,
-            a new output array will be created.
-
-        Returns
-        -------
-        output : numpy.ndarray
-            Bin index assigned to each (unmasked) point.
-
-        Raises
-        ------
-        NotImplementedError
-            By default. Subclasses may implement this method or directly
-            override :meth:`map`.
-
-        """
-        raise NotImplementedError()
 
 
 class NopMapper(BinMapper):

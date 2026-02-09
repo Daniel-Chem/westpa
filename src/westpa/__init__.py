@@ -5,6 +5,7 @@ __all__ = [
     'MultinomialResampler',
     'ResidualResampler',
     'HuberKimResampler',
+    'Bin',
     'BinMapper',
     'FuncBinMapper',
     'MABBinMapper',
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 from ._state import State
 from .core.segment import Segment
 from .core.binning import (
+    Bin,
     BinMapper,
     FuncBinMapper,
     PiecewiseBinMapper,

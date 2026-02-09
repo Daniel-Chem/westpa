@@ -9,8 +9,11 @@ from datetime import timedelta
 
 import numpy as np
 
-from .core.sim_manager import PropagationError
+from .core.binning import BinMapper, NopMapper
+from .core.propagators import Propagator
+from .core.resamplers import HuberKimResampler, Resampler
 from .core.segment import Segment
+from .core.sim_manager import PropagationError
 from .work_managers import SerialWorkManager
 from .work_managers.core import WorkManager
 from ._data_manager import DataManager
@@ -38,40 +41,54 @@ class Simulation:
     Parameters
     ----------
     datafile : str
-        Path to the HDF5 file used to store simulation data (e.g., ``'west.h5'``).
+        Pathname of the HDF5 file used to store simulation data (e.g., 'west.h5').
     propagator : Propagator
-        Routine that propagates the system forward in time.
-    resampler : Resampler
-        Routine that performs weighted ensemble resampling.
-    pcoord_calculator : Callable[[Segment], Segment], optional
-        Routine that computes the progress coordinate(s) for a given
-        trajectory segment. It should take a propagated segment, sets its
-        ``pcoord`` attribute, and return the modified segment.
+        Routine for simulating the dynamics of the system.
+    pcoord_calculator : Callable[[Segment], Segment]
+        Routine for computing the progress coordinates to a given trajectory
+        segment. It should take a propagated segment, sets its ``pcoord``
+        attribute, and return the modified segment.
+    bin_mapper : BinMapper, optional
+        Method for assigning trajectories to bins. By default, all the
+        trajectories are assigned to a single bin.
+    bin_target_counts : int or sequence of int, default 1
+        Target number of trajectories (allocation) for each bin. If an integer
+        is provided, the value will be applied to all the bins. If a sequence
+        is provided, its length must match ``bin_mapper.nbins``.
+    resampler : Resampler, optional
+        Routine for resampling the trajectories in each bin. Defaults to
+        ``HuberKimResampler()``.
     source : Source, optional
-        Source (initial) distribution according to which walkers that reach
-        the `sink` are re-initiated (recycled). Must be provided together with
-        `sink`.
+        Source (initial) distribution according to which walkers that reach the
+        `sink` are re-initiated (recycled). Must be provided together with `sink`.
     sink : Sink, optional
-        Sink (target) region from which walkers are recycled according the
+        Sink (target) region from which walkers are recycled according to the
         `source` distribution. Must be provided together with `source`.
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator` and `pcoord_calculator`.
         By default, calls are executed serially.
-        Some work managers (e.g., those based on Python's ``multiprocessing``
-        package) may require `propagator` and `pcoord_calculator` to be
-        `picklable <https://docs.python.org/3/library/pickle.html>`_.
+    propagator_batch_size : int, default 1
+        Maximum number of segments to propagate in a single task.
 
     Attributes
     ----------
-    datafile : str
+    propagator : Propagator
+    pcoord_calculator : callable or None
+    bin_mapper : BinMapper
+    bin_target_counts : numpy.ndarray
+    resampler : Resampler
     work_manager : WorkManager
+    propagator_batch_size : int
+    datafile : str
     n_iter : int
-    incomplete_segments : Iterator[Segment]
+    incomplete_segments : iterable of Segment
 
     Methods
     -------
     initialize
     run
+    update_bins
+    update_source_and_sink
 
     """
 
@@ -80,24 +97,36 @@ class Simulation:
         *,
         datafile,
         propagator,
-        resampler,
-        pcoord_calculator=None,
+        pcoord_calculator,
+        bin_mapper=None,
+        bin_target_counts=1,
+        resampler=None,
         source=None,
         sink=None,
         work_manager=None,
         propagator_batch_size=1,
     ):
+        self._propagator = None
+        self._pcoord_calculator = None
+        self._bin_mapper = None
+        self._bin_target_counts = None
+        self._resampler = None
+        self._source = None
+        self._sink = None
+        self._work_manager = None
+        self._propagator_batch_size = None
+
         self.data_manager = DataManager(datafile)
 
         self.propagator = propagator
-        self.resampler = resampler
         self.pcoord_calculator = pcoord_calculator
+        self.update_bins(bin_mapper, bin_target_counts)
+        self.resampler = resampler or HuberKimResampler()
 
         if source is not None or sink is not None:
             if source is None or sink is None:
                 raise ValueError("'source' and 'sink' must be provided together")
-        self.source = source
-        self.sink = sink
+            self.update_source_and_sink(source, sink)
 
         self.work_manager = work_manager or SerialWorkManager()
         self.propagator_batch_size = propagator_batch_size
@@ -108,12 +137,65 @@ class Simulation:
 
     @property
     def datafile(self):
-        """HDF5 file used to store simulation data."""
+        """HDF5 data file."""
         return self.data_manager.we_h5filename
 
     @property
+    def propagator(self):
+        """Propagator."""
+        return self._propagator
+
+    @propagator.setter
+    def propagator(self, value):
+        if not isinstance(value, Propagator):
+            raise TypeError("'propagator' must be a Propagator object")
+        self._propagator = value
+
+    @property
+    def pcoord_calculator(self):
+        """Progress coordinate calculator."""
+        return self._pcoord_calculator
+
+    @pcoord_calculator.setter
+    def pcoord_calculator(self, value):
+        if not callable(value):
+            raise TypeError("'pcoord_calculator' must be callable")
+        self._pcoord_calculator = value
+
+    @property
+    def bin_mapper(self):
+        """Bin mapper."""
+        return self._bin_mapper
+
+    @property
+    def bin_target_counts(self):
+        """Target number of trajectories for each bin."""
+        return self._bin_target_counts
+
+    @property
+    def resampler(self):
+        """Resampler."""
+        return self._resampler
+
+    @resampler.setter
+    def resampler(self, value):
+        if not isinstance(value, Resampler):
+            raise TypeError("'resampler' must be a Resampler object")
+        self._resampler = value
+
+    @property
+    def source(self):
+        """Source (initial) distribution."""
+        return self._source
+
+    @property
+    def sink(self):
+        """Sink (target) region."""
+        return self._sink
+
+    @property
     def work_manager(self):
-        """Work manager for launching tasks."""
+        """Work manager."""
         return self._work_manager
 
     @work_manager.setter
@@ -124,7 +206,7 @@ class Simulation:
 
     @property
     def propagator_batch_size(self):
-        """Maximum number of segments per propagation task."""
+        """Batch size for propagation tasks."""
         return self._propagator_batch_size
 
     @propagator_batch_size.setter
@@ -146,6 +228,55 @@ class Simulation:
         for segment in self.current_iter_segments:
             if segment.status != Segment.Status.COMPLETE:
                 yield segment
+
+    def update_bins(self, mapper, target_counts):
+        """Update the bin mapper and target counts.
+
+        Parameters
+        ----------
+        mapper : BinMapper or None
+            Bin mapper for assigning trajectory segments to bins. If None,
+            all the segments will be assigned to a single bin.
+        target_counts : int or sequence of int
+            Target number of trajectories for each bin.
+
+        """
+        if mapper is None:
+            mapper = NopMapper()
+        elif not isinstance(mapper, BinMapper):
+            raise TypeError("'mapper' must be a BinMapper object")
+
+        if isinstance(target_counts, int):
+            target_counts = np.repeat(target_counts, mapper.nbins)
+        else:
+            target_counts = np.asarray(target_counts, dtype=int)
+            if not len(target_counts) == mapper.nbins:
+                raise ValueError("length of 'target_counts' must equal the number of bins")
+        if (target_counts <= 0).any():
+            raise ValueError("'target_counts' must be positive")
+
+        self._bin_mapper = mapper
+        self._bin_target_counts = target_counts
+
+    def update_source_and_sink(self, source, sink):
+        """Update the source and sink.
+
+        Parameters
+        ----------
+        source : Source
+            Source distribution according to which walkers that reach the
+            `sink` are re-initiated (recycled).
+        sink : Sink
+            Sink region from which walkers are recycled according to the
+            `source` distribution.
+
+        """
+        if not isinstance(source, Source):
+            raise TypeError("'source' must be a Source object")
+        if not isinstance(sink, Sink):
+            raise TypeError("'sink' must be a Sink object")
+        self._source = source
+        self._sink = sink
 
     def initialize(
         self,
@@ -394,21 +525,17 @@ class Simulation:
         self.data_manager.flush_backing()
 
     def _run_we(self):
-        replicas = [
-            Segment(
-                n_iter=segment.n_iter,
-                seg_id=segment.seg_id,
-                weight=segment.weight,
-                parent_id=segment.parent_id,
-                wtg_parent_ids=[segment.seg_id],  # initialize weight transfer graph
-                initial_state=segment.initial_state,
-                final_state=segment.final_state,
-                pcoord=segment.pcoord,
-                data=segment.data,
-            )
-            for segment in self.current_iter_segments
-        ]
-        self.resampled_segments = list(self.resampler(replicas))
+        segments = [s.copy(wtg_parent_ids=[s.seg_id]) for s in self.current_iter_segments]
+        # wtg_parent_ids=[s.seg_id] initializes the weight transfer graph.
+
+        bins = self.bin_mapper.map(segments)
+        for i, bin in enumerate(bins):
+            if bin.count == 0:
+                continue
+            target_count = self.bin_target_counts[i]
+            bins[i] = self.resampler(bin, target_count)
+
+        self.resampled_segments = list(itertools.chain(*bins))
 
     def _prepare_next_iteration(self):
         if self.sink is not None:
