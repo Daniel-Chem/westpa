@@ -82,8 +82,7 @@ class Simulation:
     work_manager : WorkManager
     propagator_batch_size : int
     datafile : str
-    n_iter : int
-    incomplete_segments : iterable of Segment
+    current_iteration : int
 
     Methods
     -------
@@ -91,6 +90,8 @@ class Simulation:
     run
     update_bins
     update_source_and_sink
+    get_current_segments
+    update_current_segments
 
     """
 
@@ -220,62 +221,15 @@ class Simulation:
         self._propagator_batch_size = value
 
     @property
-    def n_iter(self):
+    def current_iteration(self):
         """Current iteration number."""
         return self.data_manager.current_iteration
 
     @property
     def incomplete_segments(self):
-        """Incomplete segments remaining in the current iteration."""
         for segment in self.current_iter_segments:
             if segment.status != Segment.Status.COMPLETE:
                 yield segment
-
-    def update_bins(self, mapper, target_counts):
-        """Update the bin mapper and target counts.
-
-        Parameters
-        ----------
-        mapper : BinMapper
-            Routine for grouping trajectory segments into bins.
-        target_counts : int or sequence of int
-            Target number of trajectories for each bin. If passed an integer,
-            the value will be applied to all the bins. If passed a sequence,
-            its length must match ``bin_mapper.nbins``.
-
-        """
-        if not isinstance(mapper, BinMapper):
-            raise TypeError("'mapper' must be a BinMapper object")
-
-        if isinstance(target_counts, int):
-            target_counts = np.repeat(target_counts, mapper.nbins)
-        else:
-            target_counts = np.asarray(target_counts, dtype=int)
-            if not len(target_counts) == mapper.nbins:
-                raise ValueError("length of 'target_counts' must equal the number of bins")
-        if (target_counts <= 0).any():
-            raise ValueError("'target_counts' must be positive")
-
-        self._bin_mapper = mapper
-        self._bin_target_counts = target_counts
-
-    def update_source_and_sink(self, source, sink):
-        """Update the source and sink.
-
-        Parameters
-        ----------
-        source : Source
-            Source (initial) distribution.
-        sink : Sink
-            Sink (target) region.
-
-        """
-        if not isinstance(source, Source):
-            raise TypeError("'source' must be a Source object")
-        if not isinstance(sink, Sink):
-            raise TypeError("'sink' must be a Sink object")
-        self._source = source
-        self._sink = sink
 
     def initialize(
         self,
@@ -287,10 +241,10 @@ class Simulation:
         Parameters
         ----------
         initial_states : State or iterable of State
-            Microstates from which to start trajectories (one per trajectory).
+            States from which to initiate trajectories (one per trajectory).
         weights : 1-D array-like, optional
-            Weight to assign each trajectory. By default, the trajectories are
-            assigned equal weights.
+            Weight to assign each trajectory. If not provided, uniform weights
+            are assumed.
 
         """
         if os.path.exists(self.datafile):
@@ -334,12 +288,12 @@ class Simulation:
         self.data_manager.flush_backing()
         self.data_manager.close_backing()
 
-    def run(self, n_iters=1, max_walltime=None):
+    def run(self, iterations=1, max_walltime=None):
         """Run the simulation.
 
         Parameters
         ----------
-        n_iters : int, default 1
+        iterations : int, default 1
             Number of iterations to run.
         max_walltime : float, optional
             Maximum wall-clock time in seconds. If provided, the simulation
@@ -350,7 +304,7 @@ class Simulation:
         with self.work_manager as work_manager:
             if work_manager.is_master:
                 work_manager.install_sigint_handler()
-                self._run(n_iters, max_walltime)
+                self._run(iterations, max_walltime)
             else:
                 work_manager.run()
 
@@ -364,19 +318,20 @@ class Simulation:
         else:
             stop_time = None
 
-        max_iter = self.n_iter + n_iters - 1
+        n_iter = self.current_iteration
+        max_iter = n_iter + n_iters - 1
 
         iter_walltime = 0
-        while self.n_iter <= max_iter:
+        while n_iter <= max_iter:
             if max_walltime and time.time() + 1.1 * iter_walltime >= stop_time:
-                logger.info(f'Iteration {self.n_iter} would require more than the allotted time. Ending run.')
+                logger.info(f'Iteration {n_iter} would require more than the allotted time. Ending run.')
                 return
 
             try:
                 iter_start_time = time.time()
 
                 logger.info('%s' % time.asctime())
-                logger.info('Iteration %d (%d requested)' % (self.n_iter, max_iter))
+                logger.info('Iteration %d (of %d)' % (n_iter, max_iter))
 
                 self._prepare_iteration()
                 self._propagate()
@@ -453,7 +408,7 @@ class Simulation:
             self.data_manager.update_iter_summary(iter_summary)
 
     def _prepare_iteration(self):
-        logger.debug('beginning iteration {:d}'.format(self.n_iter))
+        logger.debug('beginning iteration {:d}'.format(self.current_iteration))
 
         if self.current_iter_segments is None:
             self.current_iter_segments = self.data_manager.get_segments()
@@ -469,15 +424,17 @@ class Simulation:
         logger.debug(f'{n_complete} segments are complete; {n_incomplete} are incomplete')
 
         if len(incomplete_segments) == len(self.current_iter_segments):
-            logger.info(f'Beginning iteration {self.n_iter}')
+            logger.info(f'Beginning iteration {self.current_iteration}')
         elif incomplete_segments:
-            logger.info(f'Continuing iteration {self.n_iter}')
+            logger.info(f'Continuing iteration {self.current_iteration}')
 
-        logger.info(f'{n_incomplete} segments remain in iteration {self.n_iter} ' f'({len(self.current_iter_segments)} total)')
+        logger.info(
+            f'{n_incomplete} segments remain in iteration {self.current_iteration} ' f'({len(self.current_iter_segments)} total)'
+        )
 
     def _propagate(self):
         segments = list(self.incomplete_segments)
-        logger.debug(f'iteration {self.n_iter}: propagating {len(segments)} segments')
+        logger.debug(f'iteration {self.current_iteration}: propagating {len(segments)} segments')
 
         futures = set()
         propagator_futures = set()
@@ -511,13 +468,13 @@ class Simulation:
                         pcoord_futures.add(pcoord_future)
                         futures.add(pcoord_future)
                 else:
-                    self.data_manager.update_segments(self.n_iter, segments=batch)
+                    self.data_manager.update_segments(self.current_iteration, segments=batch)
 
             elif future in pcoord_futures:
                 pcoord_futures.remove(future)
                 segment = future.get_result()
                 self.current_iter_segments[segment.seg_id] = segment
-                self.data_manager.update_segments(self.n_iter, segments=[segment])
+                self.data_manager.update_segments(self.current_iteration, segments=[segment])
 
         logger.debug('done with propagation')
 
@@ -571,8 +528,77 @@ class Simulation:
             if segment.endpoint_type == Segment.EndPointType.UNSET:
                 segment.endpoint_type = Segment.EndPointType.MERGED
 
-        self.data_manager.update_segments(self.n_iter, self.current_iter_segments)
-        self.data_manager.prepare_iteration(self.n_iter + 1, self.next_iter_segments)
+        self.data_manager.update_segments(self.current_iteration, self.current_iter_segments)
+        self.data_manager.prepare_iteration(self.current_iteration + 1, self.next_iter_segments)
+
+    def update_bins(self, mapper, target_counts):
+        """Update the bin mapper and target counts.
+
+        Parameters
+        ----------
+        mapper : BinMapper
+            Routine for grouping trajectory segments into bins.
+        target_counts : int or sequence of int
+            Target number of trajectories for each bin. If passed an integer,
+            the value will be applied to all the bins. If passed a sequence,
+            its length must match ``bin_mapper.nbins``.
+
+        """
+        if not isinstance(mapper, BinMapper):
+            raise TypeError("'mapper' must be a BinMapper object")
+
+        if isinstance(target_counts, int):
+            target_counts = np.repeat(target_counts, mapper.nbins)
+        else:
+            target_counts = np.asarray(target_counts, dtype=int)
+            if not len(target_counts) == mapper.nbins:
+                raise ValueError("length of 'target_counts' must equal the number of bins")
+        if (target_counts <= 0).any():
+            raise ValueError("'target_counts' must be positive")
+
+        self._bin_mapper = mapper
+        self._bin_target_counts = target_counts
+
+    def update_source_and_sink(self, source, sink):
+        """Update the source and sink.
+
+        Parameters
+        ----------
+        source : Source
+            Source (initial) distribution.
+        sink : Sink
+            Sink (target) region.
+
+        """
+        if not isinstance(source, Source):
+            raise TypeError("'source' must be a Source object")
+        if not isinstance(sink, Sink):
+            raise TypeError("'sink' must be a Sink object")
+        self._source = source
+        self._sink = sink
+
+    def get_current_segments(self):
+        """Retrieve the current segments
+
+        Returns
+        -------
+        iterable of Segment
+            Current segments.
+
+        """
+        return iter(self.current_iter_segments)
+
+    def update_current_segments(self, segments):
+        """Update the current segments.
+
+        Parameters
+        ----------
+        segments : iterable of Segment
+            Updated segments.
+
+        """
+        for segment in segments:
+            self.current_iter_segments[segment.seg_id] = segment
 
 
 class Source:
