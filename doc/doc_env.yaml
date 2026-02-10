@@ -17,5 +17,5 @@ dependencies:
   - ipykernel
   - mpi4py
   - sphinx
-  - sphinx-rtd-theme
+  - pydata-sphinx-theme
   - pip
