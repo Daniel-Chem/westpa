@@ -6,7 +6,7 @@ analyzing weighted ensemble simulations, as well as generating plots.
 
 .. toctree::
     :maxdepth: 1
-    :caption: Setting up and running a simulation
+    :caption: Setting up and running simulations
 
     w_init
     w_bins
@@ -16,7 +16,7 @@ analyzing weighted ensemble simulations, as well as generating plots.
 
 .. toctree::
     :maxdepth: 1
-    :caption: Analyzing a simulation
+    :caption: Analyzing simulations
 
     w_assign
     w_trace
