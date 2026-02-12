@@ -51,8 +51,9 @@ class Simulation:
         Routine for computing the progress coordinate(s). It should take a
         propagated segment, set its ``pcoord`` attribute, and return the
         modified segment.
-    bin_mapper : BinMapper
-        Routine for grouping trajectories into bins.
+    bin_mapper : BinMapper, optional
+        Routine for grouping trajectories into bins. By default, all the
+        trajectories are grouped into a single bin.
     bin_target_counts : int or sequence of int, default 1
         Target number of trajectories (allocation) for each bin. If passed an
         integer, the value will be applied to all the bins. If passed a
@@ -105,7 +106,7 @@ class Simulation:
         datafile,
         propagator,
         pcoord_calculator,
-        bin_mapper,
+        bin_mapper=None,
         bin_target_counts=1,
         resampler=None,
         source=None,
