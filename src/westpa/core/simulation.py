@@ -144,7 +144,7 @@ class Simulation:
         for plugin in plugins or []:
             self.add_plugin(plugin)
 
-        self.current_iter_segments = []
+        self.segments = []
         self.resampled_segments = []  # populated by _run_we()
         self.next_iter_segments = []  # populated by _prepare_new_iteration()
 
@@ -242,7 +242,7 @@ class Simulation:
 
     @property
     def incomplete_segments(self):
-        for segment in self.current_iter_segments:
+        for segment in self.segments:
             if segment.status != Segment.Status.COMPLETE:
                 yield segment
 
@@ -282,7 +282,7 @@ class Simulation:
                 raise ValueError("length of 'weights' must match number of initial states")
         weights /= weights.sum()
 
-        self.current_iter_segments = [
+        self.segments = [
             Segment(
                 n_iter=1,
                 seg_id=index,
@@ -295,7 +295,7 @@ class Simulation:
             for index, (state, weight) in enumerate(zip(initial_states, weights))
         ]
 
-        self.data_manager.prepare_iteration(n_iter=1, segments=self.current_iter_segments)
+        self.data_manager.prepare_iteration(n_iter=1, segments=self.segments)
         self.data_manager.current_iteration = 1
 
         logger.info('Simulation prepared.')
@@ -412,7 +412,7 @@ class Simulation:
                 self._finalize_iteration()
 
                 iter_elapsed = time.time() - iter_start_time
-                cputime = sum(segment.cputime for segment in self.current_iter_segments)
+                cputime = sum(segment.cputime for segment in self.segments)
                 iter_summary = self.data_manager.get_iter_summary()
                 iter_summary['walltime'] += iter_elapsed
                 iter_summary['cputime'] = cputime
@@ -427,7 +427,7 @@ class Simulation:
 
                 # Advance to the next iteration.
                 self.data_manager.current_iteration += 1
-                self.current_iter_segments = copy.copy(self.next_iter_segments)
+                self.segments = copy.copy(self.next_iter_segments)
                 self.resampled_segments.clear()
                 self.next_iter_segments.clear()
             finally:
@@ -440,9 +440,9 @@ class Simulation:
 
     def _report_statistics(self, save_summary=False):
         seg_probs = np.fromiter(
-            map(operator.attrgetter('weight'), self.current_iter_segments),
+            map(operator.attrgetter('weight'), self.segments),
             dtype=float,
-            count=len(self.current_iter_segments),
+            count=len(self.segments),
         )
         norm = seg_probs.sum()
 
@@ -452,7 +452,7 @@ class Simulation:
 
         eps = np.finfo(float).eps
 
-        logger.info(f'number of segments:             {len(self.current_iter_segments)}')
+        logger.info(f'number of segments:             {len(self.segments)}')
         logger.info(f'minimum non-zero probability:   {min_seg_prob:g}')
         logger.info(f'maximum non-zero probability:   {max_seg_prob:g}')
         logger.info(f'probability dynamic range (kT): {seg_drange:g}')
@@ -466,7 +466,7 @@ class Simulation:
 
         if save_summary:
             iter_summary = self.data_manager.get_iter_summary()
-            iter_summary['n_particles'] = len(self.current_iter_segments)
+            iter_summary['n_particles'] = len(self.segments)
             iter_summary['norm'] = norm
             iter_summary['min_seg_prob'] = min_seg_prob
             iter_summary['max_seg_prob'] = max_seg_prob
@@ -487,27 +487,25 @@ class Simulation:
     def _prepare_iteration(self):
         logger.debug(f'beginning iteration {self.current_iteration}')
 
-        if self.current_iter_segments is None:
-            self.current_iter_segments = self.data_manager.get_segments()
-            logger.debug(f'loaded {len(self.current_iter_segments)} segments')
+        if self.segments is None:
+            self.segments = self.data_manager.get_segments()
+            logger.debug(f'loaded {len(self.segments)} segments')
         else:
-            logger.debug(f'using {len(self.current_iter_segments)} pre-existing segments')
+            logger.debug(f'using {len(self.segments)} pre-existing segments')
 
         incomplete_segments = list(self.incomplete_segments)
 
         n_incomplete = len(incomplete_segments)
-        n_complete = len(self.current_iter_segments) - n_incomplete
+        n_complete = len(self.segments) - n_incomplete
 
         logger.debug(f'{n_complete} segments are complete; {n_incomplete} are incomplete')
 
-        if len(incomplete_segments) == len(self.current_iter_segments):
+        if len(incomplete_segments) == len(self.segments):
             logger.info(f'Beginning iteration {self.current_iteration}')
         elif incomplete_segments:
             logger.info(f'Continuing iteration {self.current_iteration}')
 
-        logger.info(
-            f'{n_incomplete} segments remain in iteration {self.current_iteration} ({len(self.current_iter_segments)} total)'
-        )
+        logger.info(f'{n_incomplete} segments remain in iteration {self.current_iteration} ({len(self.segments)} total)')
 
         self._call_plugin_method(Plugin.prepare_iteration)
 
@@ -546,7 +544,7 @@ class Simulation:
                         logger.error(f'propagation failed for segment {segment.seg_id}')
                         raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
 
-                    self.current_iter_segments[segment.seg_id] = segment
+                    self.segments[segment.seg_id] = segment
 
                 if self.pcoord_calculator is not None:
                     for segment in batch:
@@ -559,7 +557,7 @@ class Simulation:
             elif future in pcoord_futures:
                 pcoord_futures.remove(future)
                 segment = future.get_result()
-                self.current_iter_segments[segment.seg_id] = segment
+                self.segments[segment.seg_id] = segment
                 self.data_manager.update_segments(self.current_iteration, segments=[segment])
 
         logger.debug('done with propagation')
@@ -570,7 +568,7 @@ class Simulation:
     def _run_we(self):
         self._call_plugin_method(Plugin.pre_we)
 
-        segments = [s.copy(wtg_parent_ids=[s.seg_id]) for s in self.current_iter_segments]
+        segments = [s.copy(wtg_parent_ids=[s.seg_id]) for s in self.segments]
         # wtg_parent_ids=[s.seg_id] initializes the weight transfer graph.
         bins = self.bin_mapper.map(segments)
         for i, bin in enumerate(bins):
@@ -592,7 +590,7 @@ class Simulation:
             new_initial_states = []
 
         for index, segment in enumerate(self.resampled_segments):
-            parent = self.current_iter_segments[segment.seg_id]
+            parent = self.segments[segment.seg_id]
 
             if segment in recycled_segments:
                 parent.endpoint_type = Segment.EndPointType.RECYCLED
@@ -614,11 +612,11 @@ class Simulation:
             )
             self.next_iter_segments.append(new_segment)
 
-        for segment in self.current_iter_segments:
+        for segment in self.segments:
             if segment.endpoint_type == Segment.EndPointType.UNSET:
                 segment.endpoint_type = Segment.EndPointType.MERGED
 
-        self.data_manager.update_segments(self.current_iteration, self.current_iter_segments)
+        self.data_manager.update_segments(self.current_iteration, self.segments)
         self.data_manager.prepare_iteration(self.current_iteration + 1, self.next_iter_segments)
 
         self._call_plugin_method(Plugin.prepare_new_iteration)
