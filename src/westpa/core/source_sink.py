@@ -67,9 +67,9 @@ class Source:
         args = f'{self.states}, p={self.p.tolist()}'
         return type(self).__name__ + '(' + args + ')'
 
-    def random_choice(self, size=None, seed=None):
+    def random_choice(self, k=1, seed=None):
         rng = np.random.default_rng(seed)
-        return rng.choice(self.states, p=self.p, size=size).tolist()
+        return rng.choice(self.states, p=self.p, size=k).tolist()
 
 
 class Sink(Container):

@@ -67,6 +67,9 @@ class Simulation:
     sink : Sink, optional
         Sink (target) region from which walkers are recycled according to the
         `source` distribution. Must be provided together with `source`.
+    istate_generator : Callable[[State], State], optional
+        Routine for generating an initial state from a `source` states. By default,
+        recycled walkers are re-initiated directly from source states.
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator` and `pcoord_calculator`.
         By default, calls are executed serially.
@@ -111,6 +114,7 @@ class Simulation:
         resampler=None,
         source=None,
         sink=None,
+        istate_generator=None,
         work_manager=None,
         propagator_block_size=1,
         plugins=None,
@@ -122,6 +126,7 @@ class Simulation:
         self._resampler = None
         self._source = None
         self._sink = None
+        self._istate_generator = None
         self._work_manager = None
         self._propagator_block_size = None
         self._plugins = SortedList(key=operator.attrgetter('priority'))
@@ -138,6 +143,7 @@ class Simulation:
                 raise ValueError("'source' and 'sink' must be provided together")
             self.update_source_and_sink(source, sink)
 
+        self.istate_generator = istate_generator
         self.work_manager = work_manager or SerialWorkManager()
         self.propagator_block_size = propagator_block_size
 
@@ -205,6 +211,17 @@ class Simulation:
     def sink(self):
         """Sink region."""
         return self._sink
+
+    @property
+    def istate_generator(self):
+        """Initial state generator."""
+        return self._istate_generator
+
+    @istate_generator.setter
+    def istate_generator(self, value):
+        if value is not None and not callable(value):
+            raise TypeError("'istate_generator' must be callable")
+        self._istate_generator = value
 
     @property
     def work_manager(self):
@@ -517,17 +534,48 @@ class Simulation:
     def _propagate(self):
         self._call_plugin_method(Plugin.pre_propagation)
 
-        segments = list(self.incomplete_segments)
-        logger.debug(f'iteration {self.current_iteration}: propagating {len(segments)} segments')
-
         futures = set()
+        istate_futures = set()
         propagator_futures = set()
         pcoord_futures = set()
 
-        for batch in batched(segments, self.propagator_block_size):
-            future = self.work_manager.submit(self.propagator, args=(batch,))
+        unprepared_segments = []
+        prepared_segments = []
+
+        for segment in self.segments:
+            if segment.initial_state is None:
+                unprepared_segments.append(segment)
+            elif segment.final_state is None:
+                prepared_segments.append(segment)
+            elif segment.pcoord is None:
+                future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
+                pcoord_futures.add(future)
+                futures.add(future)
+
+        n_incomplete = len(unprepared_segments) + len(prepared_segments)
+        logger.debug(f'iteration {self.current_iteration}: propagating {n_incomplete} segments')
+
+        if unprepared_segments:
+            states = self.source.random_choice(len(unprepared_segments), seed=self.resampler.rng)
+            if self.istate_generator is not None:
+                for state in states:
+                    logger.debug(f'generating new initial state from source state {state}')
+                    future = self.work_manager.submit(self.istate_generator, args=(state,))
+                    istate_futures.add(future)
+                    futures.add(future)
+            else:
+                for state in states:
+                    logger.debug(f'using source state {state} directly')
+                    segment = unprepared_segments.pop()
+                    segment = segment.copy(initial_state=state, status=Segment.Status.PREPARED)
+                    prepared_segments.append(segment)
+                self.data_manager.update_segments(self.current_iteration, prepared_segments)
+
+        for segments in batched(prepared_segments, self.propagator_block_size):
+            future = self.work_manager.submit(self.propagator, args=(segments,))
             propagator_futures.add(future)
             futures.add(future)
+        prepared_segments.clear()
 
         logger.info('Waiting for segments to complete...')
 
@@ -535,24 +583,38 @@ class Simulation:
             future = self.work_manager.wait_any(futures)
             futures.remove(future)
 
-            if future in propagator_futures:
-                propagator_futures.remove(future)
-                batch = future.get_result()
+            if future in istate_futures:
+                istate_futures.remove(future)
+                state = future.get_result()
 
-                for segment in batch:
+                segment = unprepared_segments.pop()
+                segment = segment.copy(initial_state=state, status=Segment.Status.PREPARED)
+                prepared_segments.append(segment)
+
+                self.segments[segment.seg_id] = segment
+                self.data_manager.update_segments(self.current_iteration, segments=[segment])
+
+                if len(prepared_segments) == self.propagator_block_size or not istate_futures:
+                    future = self.work_manager.submit(self.propagator, args=(prepared_segments,))
+                    propagator_futures.add(future)
+                    futures.add(future)
+                    prepared_segments.clear()
+
+            elif future in propagator_futures:
+                propagator_futures.remove(future)
+                segments = future.get_result()
+
+                for segment in segments:
                     if segment.status != Segment.Status.COMPLETE:
                         logger.error(f'propagation failed for segment {segment.seg_id}')
                         raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
-
                     self.segments[segment.seg_id] = segment
+                # self.data_manager.update_segments(self.current_iteration, segments)
 
-                if self.pcoord_calculator is not None:
-                    for segment in batch:
-                        pcoord_future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
-                        pcoord_futures.add(pcoord_future)
-                        futures.add(pcoord_future)
-                else:
-                    self.data_manager.update_segments(self.current_iteration, segments=batch)
+                for segment in segments:
+                    future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
+                    pcoord_futures.add(future)
+                    futures.add(future)
 
             elif future in pcoord_futures:
                 pcoord_futures.remove(future)
@@ -581,34 +643,33 @@ class Simulation:
         self._call_plugin_method(Plugin.post_we)
 
     def _prepare_new_iteration(self):
-        # Populate self.next_iter_segments. Includes recycling from 'sink' to 'source'.
         if self.sink is not None:
             recycled_segments = set(filter(self.sink.indicator, self.resampled_segments))
-            new_initial_states = self.source.random_sample(len(recycled_segments))
         else:
             recycled_segments = set()
-            new_initial_states = []
 
         for index, segment in enumerate(self.resampled_segments):
             parent = self.segments[segment.seg_id]
 
             if segment in recycled_segments:
                 parent.endpoint_type = Segment.EndPointType.RECYCLED
-                parent_id = -len(new_initial_states)
-                initial_state = new_initial_states.pop()
+                parent_id = -1
+                initial_state = None
+                status = None
             else:
                 parent.endpoint_type = Segment.EndPointType.CONTINUES
                 parent_id = parent.seg_id
                 initial_state = parent.final_state
+                status = Segment.Status.PREPARED
 
             new_segment = Segment(
                 n_iter=segment.n_iter + 1,
                 seg_id=index,
                 weight=segment.weight,
-                parent_id=parent_id,
                 wtg_parent_ids=segment.wtg_parent_ids,
+                parent_id=parent_id,
                 initial_state=initial_state,
-                status=Segment.Status.PREPARED,
+                status=status,
             )
             self.next_iter_segments.append(new_segment)
 
