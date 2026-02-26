@@ -26,7 +26,6 @@ from ._assign import assignments_list_to_table
 from .assign import coord_dtype, index_dtype
 from .bins import Bin
 
-
 __all__ = [
     '_assign',
     'assign',
