@@ -1,9 +1,10 @@
 WESTPA reference
 ================
 
-**Version:** 2026.0.0a0
+**Version:** 2026.0a0
 
-**Useful links:** `Wiki <https://github.com/westpa/westpa/wiki>`_
+**Useful links:** `Home <https://westpa.github.io/westpa>`_
+| `Wiki <https://github.com/westpa/westpa/wiki>`_
 | `Installation <https://github.com/westpa/westpa/wiki/Installing-WESTPA>`_
 | `Source Repository <https://github.com/westpa/westpa>`_
 | `Issue Tracker <https://github.com/westpa/westpa/issues>`_
