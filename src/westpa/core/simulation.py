@@ -68,8 +68,9 @@ class Simulation:
         Sink (target) region from which walkers are recycled according to the
         `source` distribution. Must be provided together with `source`.
     istate_generator : Callable[[State], State], optional
-        Routine for generating an initial state from a `source` states. By default,
-        recycled walkers are re-initiated directly from source states.
+        Routine for modifying the `source` distribution on-the-fly (e.g., by
+        randomizing one or more degrees of freedom). It should take a state in
+        `source` as input, and return a new state.
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator` and `pcoord_calculator`.
         By default, calls are executed serially.
@@ -610,6 +611,7 @@ class Simulation:
                         raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
                     self.segments[segment.seg_id] = segment
                 # self.data_manager.update_segments(self.current_iteration, segments)
+                # TODO: Enable the update above.
 
                 for segment in segments:
                     future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
