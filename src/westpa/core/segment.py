@@ -288,8 +288,15 @@ class Segment:
         self._cputime = value
 
     def __repr__(self):
-        args = ', '.join(f'{name}={value!r}' for name, value in self.to_dict().items())
-        return type(self).__name__ + '(' + args + ')'
+        return '<%s(n_iter=%r, seg_id=%r, weight=%r, parent_id=%r, wtg_parent_ids=%r) at %s>' % (
+            self.__class__.__name__,
+            self.n_iter,
+            self.seg_id,
+            self.weight,
+            self.parent_id,
+            self.wtg_parent_ids,
+            hex(id(self)),
+        )
 
     @property
     def initpoint_type(self):
