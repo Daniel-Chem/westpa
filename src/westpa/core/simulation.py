@@ -256,7 +256,15 @@ class Simulation:
     @property
     def current_iteration(self):
         """Current iteration number."""
-        return self.data_manager.current_iteration
+        if self.data_manager.we_h5file is None:
+            reclose = True
+            self.data_manager.open_backing(mode='r')
+        else:
+            reclose = False
+        n = self.data_manager.current_iteration
+        if reclose:
+            self.data_manager.close_backing()
+        return n
 
     @property
     def incomplete_segments(self):

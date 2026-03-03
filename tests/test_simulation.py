@@ -46,14 +46,6 @@ def trivial_pcoord_calculator(segment):
     return segment
 
 
-def _reopen_and_get_current_iteration(sim):
-    """Reopen the HDF5 backing and return current_iteration."""
-    sim.data_manager.open_backing(mode='r')
-    n = sim.current_iteration
-    sim.data_manager.close_backing()
-    return n
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -398,8 +390,7 @@ class TestRun:
     def test_run_multiple_iterations(self, sim, tmp_path):
         sim.initialize(State(coord=[0.0]))
         sim.run(n_iters=3)
-        n = _reopen_and_get_current_iteration(sim)
-        assert n == 4  # started at 1, ran 3 iterations
+        assert sim.current_iteration == 4  # started at 1, ran 3 iterations
 
     def test_run_preserves_total_probability(self, sim):
         states = [State(coord=[float(i) * 0.1]) for i in range(4)]
@@ -419,8 +410,7 @@ class TestRun:
         states = [State(coord=[0.1]), State(coord=[0.2])]
         sim.initialize(states)
         sim.run(n_iters=2)
-        n = _reopen_and_get_current_iteration(sim)
-        assert n == 3
+        assert sim.current_iteration == 3
 
     def test_run_calls_plugin_hooks(self, sim):
         hook_calls = []
