@@ -107,10 +107,14 @@ class DataManager(WESTDataManager):
             # the changes out to HDF5
             seg_index_table_ds[:] = seg_index_table
 
-    # When updating segments, we infer pcoord_ndim, pcoord_len, and pcoord_dtype.
     def update_segments(self, n_iter, segments):
         """Update segment information in the HDF5 file; all prior information for each
         segment is overwritten, except for parent and weight transfer information.
+
+        Segments with ``pcoord=None`` are accepted: their index metadata (status,
+        weight, etc.) is written, but no pcoord entry is created or updated for
+        them.  pcoord shape and dtype are inferred from the first segment that
+        has a pcoord set.
 
         Parameters
         ----------
@@ -122,59 +126,72 @@ class DataManager(WESTDataManager):
 
         """
         segments = sorted(segments, key=attrgetter('seg_id'))
-
-        # Infer the pcoord shape and dtype from the first segment.
-        pcoord_len = segments[0].pcoord.shape[0]
-        pcoord_ndim = segments[0].pcoord.shape[1]
-        pcoord_dtype = segments[0].pcoord.dtype
+        segments_with_pcoord = [s for s in segments if s.pcoord is not None]
 
         with self.lock:
             summary_table = self.we_h5file['summary']
             n_particles = summary_table[n_iter - 1]['n_particles']
             iter_group = self.get_iter_group(n_iter)
 
-            pcoord_opts = self.dataset_options.get('pcoord', {'name': 'pcoord', 'h5path': 'pcoord', 'compression': False})
-            shape = (n_particles, pcoord_len, pcoord_ndim)
-            pcoord_ds = require_dataset_from_dsopts(iter_group, pcoord_opts, shape, pcoord_dtype)
-
-            pc_dsid = pcoord_ds.id
             si_dsid = iter_group['seg_index'].id
 
             seg_ids = [segment.seg_id for segment in segments]
             n_segments = len(segments)
             n_total_segments = si_dsid.shape[0]
 
-            seg_index_entries = np.empty((n_segments,), dtype=seg_index_dtype)
-            pcoord_entries = np.empty((n_segments, pcoord_len, pcoord_ndim), dtype=pcoord_dtype)
+            # --- seg_index update (all segments) ---
 
-            pc_msel = h5s.create_simple(pcoord_entries.shape, (h5s.UNLIMITED,) * pcoord_entries.ndim)
-            pc_msel.select_all()
+            seg_index_entries = np.empty((n_segments,), dtype=seg_index_dtype)
+
             si_msel = h5s.create_simple(seg_index_entries.shape, (h5s.UNLIMITED,))
             si_msel.select_all()
-            pc_fsel = pc_dsid.get_space()
             si_fsel = si_dsid.get_space()
 
-            for iseg in range(n_segments):
-                seg_id = seg_ids[iseg]
+            for iseg, seg_id in enumerate(seg_ids):
                 op = h5s.SELECT_OR if iseg != 0 else h5s.SELECT_SET
                 si_fsel.select_hyperslab((seg_id,), (1,), op=op)
-                pc_fsel.select_hyperslab((seg_id, 0, 0), (1, pcoord_len, pcoord_ndim), op=op)
 
-            # read summary data so that we have valud parent and weight transfer information
+            # read so that we preserve parent and weight transfer information
             si_dsid.read(si_msel, si_fsel, seg_index_entries)
 
-            for iseg, (segment, ientry) in enumerate(zip(segments, seg_index_entries)):
+            for ientry, segment in zip(seg_index_entries, segments):
                 ientry['status'] = segment.status
                 ientry['endpoint_type'] = segment.endpoint_type or Segment.SEG_ENDPOINT_UNSET
                 ientry['cputime'] = segment.cputime
                 ientry['walltime'] = segment.walltime
                 ientry['weight'] = segment.weight
 
-                pcoord_entries[iseg] = segment.pcoord
-
-            # write progress coordinates and index using low level HDF5 functions for efficiency
             si_dsid.write(si_msel, si_fsel, seg_index_entries)
-            pc_dsid.write(pc_msel, pc_fsel, pcoord_entries)
+
+            # --- pcoord update (only segments that have a pcoord) ---
+
+            if segments_with_pcoord:
+                pcoord_len = segments_with_pcoord[0].pcoord.shape[0]
+                pcoord_ndim = segments_with_pcoord[0].pcoord.shape[1]
+                pcoord_dtype = segments_with_pcoord[0].pcoord.dtype
+
+                pcoord_opts = self.dataset_options.get('pcoord', {'name': 'pcoord', 'h5path': 'pcoord', 'compression': False})
+                pcoord_ds = require_dataset_from_dsopts(
+                    iter_group, pcoord_opts, (n_particles, pcoord_len, pcoord_ndim), pcoord_dtype
+                )
+
+                pc_dsid = pcoord_ds.id
+                pc_seg_ids = [s.seg_id for s in segments_with_pcoord]
+                n_pc_segments = len(segments_with_pcoord)
+
+                pcoord_entries = np.empty((n_pc_segments, pcoord_len, pcoord_ndim), dtype=pcoord_dtype)
+                for ipc, segment in enumerate(segments_with_pcoord):
+                    pcoord_entries[ipc] = segment.pcoord
+
+                pc_msel = h5s.create_simple(pcoord_entries.shape, (h5s.UNLIMITED,) * pcoord_entries.ndim)
+                pc_msel.select_all()
+                pc_fsel = pc_dsid.get_space()
+
+                for ipc, seg_id in enumerate(pc_seg_ids):
+                    op = h5s.SELECT_OR if ipc != 0 else h5s.SELECT_SET
+                    pc_fsel.select_hyperslab((seg_id, 0, 0), (1, pcoord_len, pcoord_ndim), op=op)
+
+                pc_dsid.write(pc_msel, pc_fsel, pcoord_entries)
 
             # Now, to deal with auxiliary data
             # If any segment has any auxiliary data, then the aux dataset must spring into

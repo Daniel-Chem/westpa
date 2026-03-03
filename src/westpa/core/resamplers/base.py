@@ -145,7 +145,7 @@ class Resampler(abc.ABC):
         return self._rng
 
     def _split_by_threshold(self, bin):
-        index = bin.bisect_weights(self.largest_allowed_weight)
+        index = bin.bisect_weights(self.largest_allowed_weight, side='right')
         to_split = bin.segments[index:]
         for segment in to_split:
             m = math.ceil(segment.weight / self.largest_allowed_weight)
