@@ -62,11 +62,10 @@ class Simulation:
         Routine for resampling the trajectories in each bin. Defaults to
         ``HuberKimResampler()``.
     source : Source, optional
-        Source (initial) distribution according to which walkers that reach the
-        `sink` are re-initiated (recycled). Must be provided together with `sink`.
-    sink : Sink, optional
-        Sink (target) region from which walkers are recycled according to the
-        `source` distribution. Must be provided together with `source`.
+        Distribution according to which to re-initiate (recycle) walkers that
+        reach one of the `sinks`. Must be provided together with `sinks`.
+    sinks : Sink or iterable of Sink, optional
+        One or more sink (target) regions. Must be provided together with `source`.
     istate_generator : Callable[[State], State], optional
         Routine for modifying the `source` distribution on-the-fly (e.g., by
         randomizing one or more degrees of freedom). It should take a state in
@@ -88,7 +87,7 @@ class Simulation:
     bin_target_counts : numpy.ndarray
     resampler : Resampler
     source : Source or None
-    sink : Sink or None
+    sinks : tuple of Sink
     work_manager : WorkManager
     propagator_block_size : int
     plugins : iterable of Plugin
@@ -99,7 +98,7 @@ class Simulation:
     initialize
     run
     update_bins
-    update_source_and_sink
+    update_source_and_sinks
     add_plugin
 
     """
@@ -114,7 +113,7 @@ class Simulation:
         bin_target_counts=1,
         resampler=None,
         source=None,
-        sink=None,
+        sinks=None,
         istate_generator=None,
         work_manager=None,
         propagator_block_size=1,
@@ -126,7 +125,7 @@ class Simulation:
         self._bin_target_counts = None
         self._resampler = None
         self._source = None
-        self._sink = None
+        self._sinks = ()
         self._istate_generator = None
         self._work_manager = None
         self._propagator_block_size = None
@@ -139,10 +138,12 @@ class Simulation:
         self.update_bins(bin_mapper or NopMapper(), bin_target_counts)
         self.resampler = resampler or HuberKimResampler()
 
-        if source is not None or sink is not None:
-            if source is None or sink is None:
-                raise ValueError("'source' and 'sink' must be provided together")
-            self.update_source_and_sink(source, sink)
+        if source is not None or sinks is not None:
+            if source is None or sinks is None:
+                raise ValueError("'source' and 'sinks' must be provided together")
+            if isinstance(sinks, Sink):
+                sinks = [sinks]
+            self.update_source_and_sinks(source, sinks)
 
         self.istate_generator = istate_generator
         self.work_manager = work_manager or SerialWorkManager()
@@ -209,9 +210,9 @@ class Simulation:
         return self._source
 
     @property
-    def sink(self):
-        """Sink region."""
-        return self._sink
+    def sinks(self):
+        """Sink (target) regions."""
+        return self._sinks
 
     @property
     def istate_generator(self):
@@ -377,23 +378,24 @@ class Simulation:
         self._bin_mapper = mapper
         self._bin_target_counts = target_counts
 
-    def update_source_and_sink(self, source, sink):
+    def update_source_and_sinks(self, source, sinks):
         """Update the source and sink.
 
         Parameters
         ----------
         source : Source
-            Source (initial) distribution.
-        sink : Sink
-            Sink (target) region.
+            Source distribution.
+        sinks : iterable of Sink
+            Sink (target) regions.
 
         """
         if not isinstance(source, Source):
             raise TypeError("'source' must be a Source object")
-        if not isinstance(sink, Sink):
-            raise TypeError("'sink' must be a Sink object")
+        sinks = tuple(sinks)
+        if not all(isinstance(item, Sink) for item in sinks):
+            raise TypeError("items in 'sinks' must be Sink objects")
         self._source = source
-        self._sink = sink
+        self._sinks = sinks
 
     def add_plugin(self, plugin):
         """Add a plugin to the simulation.
@@ -640,8 +642,9 @@ class Simulation:
     def _run_we(self):
         self._call_plugin_method(Plugin.pre_we)
 
+        # Initialize the weight transfer graph.
         segments = [s.copy(wtg_parent_ids=[s.seg_id]) for s in self.segments]
-        # wtg_parent_ids=[s.seg_id] initializes the weight transfer graph.
+
         bins = self.bin_mapper.map(segments)
         for i, bin in enumerate(bins):
             if len(bin) == 0:
@@ -653,10 +656,12 @@ class Simulation:
         self._call_plugin_method(Plugin.post_we)
 
     def _prepare_new_iteration(self):
-        if self.sink is not None:
-            recycled_segments = set(filter(self.sink.indicator, self.resampled_segments))
-        else:
-            recycled_segments = set()
+        recycled_segments = set()
+        for sink in self.sinks:
+            segments = {s for s in self.resampled_segments if s in sink}
+            recycled_segments |= segments
+            p = sum(s.weight for s in segments)
+            logger.info(f'Recycled {p} probability ({len(segments)} walkers) from {sink!r}')
 
         for index, segment in enumerate(self.resampled_segments):
             parent = self.segments[segment.seg_id]

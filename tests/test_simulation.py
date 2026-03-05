@@ -98,9 +98,11 @@ class TestSimulationConstructor:
     def test_default_work_manager_is_serial(self, sim):
         assert isinstance(sim.work_manager, SerialWorkManager)
 
-    def test_default_source_and_sink_are_none(self, sim):
+    def test_default_source_is_none(self, sim):
         assert sim.source is None
-        assert sim.sink is None
+
+    def test_default_sinks_is_empty(self, sim):
+        assert len(sim.sinks) == 0
 
     def test_default_istate_generator_is_none(self, sim):
         assert sim.istate_generator is None
@@ -162,7 +164,7 @@ class TestSimulationConstructor:
 
     def test_source_without_sink_raises(self, datafile, propagator):
         source = Source(State(coord=[0.0]))
-        with pytest.raises(ValueError, match="'source' and 'sink' must be provided together"):
+        with pytest.raises(ValueError, match="'source' and 'sinks' must be provided together"):
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
@@ -172,12 +174,12 @@ class TestSimulationConstructor:
 
     def test_sink_without_source_raises(self, datafile, propagator):
         sink = Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
-        with pytest.raises(ValueError, match="'source' and 'sink' must be provided together"):
+        with pytest.raises(ValueError, match="'source' and 'sinks' must be provided together"):
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
                 pcoord_calculator=trivial_pcoord_calculator,
-                sink=sink,
+                sinks=[sink],
             )
 
     def test_source_and_sink_together(self, datafile, propagator):
@@ -188,10 +190,10 @@ class TestSimulationConstructor:
             propagator=propagator,
             pcoord_calculator=trivial_pcoord_calculator,
             source=source,
-            sink=sink,
+            sinks=[sink],
         )
         assert sim.source is source
-        assert sim.sink is sink
+        assert sim.sinks[0] is sink
 
     def test_invalid_istate_generator_type(self, datafile, propagator):
         with pytest.raises(TypeError, match="'istate_generator' must be callable"):
@@ -265,27 +267,27 @@ class TestUpdateBins:
 
 
 # ---------------------------------------------------------------------------
-# update_source_and_sink tests
+# update_source_and_sinks tests
 # ---------------------------------------------------------------------------
 
 
-class TestUpdateSourceAndSink:
+class TestUpdateSourceAndSinks:
     def test_valid_update(self, sim):
         source = Source(State(coord=[0.0]))
         sink = Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
-        sim.update_source_and_sink(source, sink)
+        sim.update_source_and_sinks(source, [sink])
         assert sim.source is source
-        assert sim.sink is sink
+        assert sim.sinks[0] is sink
 
     def test_invalid_source_type(self, sim):
         sink = Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
-        with pytest.raises(TypeError, match="'source' must be a Source"):
-            sim.update_source_and_sink("not_a_source", sink)
+        with pytest.raises(TypeError, match="'source' must be a Source object"):
+            sim.update_source_and_sinks("not_a_source", [sink])
 
     def test_invalid_sink_type(self, sim):
         source = Source(State(coord=[0.0]))
-        with pytest.raises(TypeError, match="'sink' must be a Sink"):
-            sim.update_source_and_sink(source, "not_a_sink")
+        with pytest.raises(TypeError, match="items in 'sinks' must be Sink objects"):
+            sim.update_source_and_sinks(source, ["not_a_sink"])
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +454,7 @@ class TestRun:
             propagator=TrivialPropagator(delta=1.0, seed=0),  # large step → always sinks
             pcoord_calculator=trivial_pcoord_calculator,
             source=source,
-            sink=sink,
+            sinks=sink,
         )
         states = [State(coord=[0.0])]
         sim.initialize(states)

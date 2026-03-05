@@ -13,14 +13,7 @@ class Source:
     states : State or iterable of State
         One or more source states.
     p : 1-D array-like, optional
-        Probability to assign each state. Defaults to a uniform distribution.
-
-    Attributes
-    ----------
-    states : sequence of State
-        Source states.
-    p : numpy.ndarray
-        Probability assigned to each state.
+        Selection probability of each state. Defaults to a uniform distribution.
 
     Examples
     --------
@@ -57,7 +50,7 @@ class Source:
         else:
             p = np.asarray(p, dtype=float)
             if len(p) != len(states):
-                raise ValueError("length of 'p' must match number of states")
+                raise ValueError("length of 'p' must match the number of states")
         p /= p.sum()
 
         self.states = states
@@ -81,11 +74,8 @@ class Sink(Container):
         Function that returns True if a given trajectory segment reached the
         sink, False otherwise. This function may assume that the segment has
         completed propagation and that its ``pcoord`` attribute has been set.
-
-    Attributes
-    ----------
-    indicator : Callable[[Segment], bool]
-        Indicator function.
+    label : str, optional
+        Label for the sink.
 
     Methods
     -------
@@ -108,8 +98,9 @@ class Sink(Container):
 
     """
 
-    def __init__(self, indicator):
+    def __init__(self, indicator, label=None):
         self.indicator = indicator
+        self.label = label or ''
 
     def __contains__(self, segment):
         """Test whether a given segment is contained in the sink."""
@@ -117,4 +108,6 @@ class Sink(Container):
 
     def __repr__(self):
         args = f'indicator={self.indicator!r}'
+        if self.label:
+            args += f', label={self.label!r}'
         return type(self).__name__ + '(' + args + ')'
