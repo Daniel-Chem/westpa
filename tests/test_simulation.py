@@ -39,13 +39,6 @@ class FailingPropagator(Propagator):
         return segment
 
 
-def trivial_pcoord_calculator(segment):
-    """Sets pcoord to the final x-coordinate as a (1, 1)-shaped array."""
-    x = segment.final_state.coord[0]
-    segment.pcoord = np.array([[x]])
-    return segment
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -58,7 +51,7 @@ def datafile(tmp_path):
 
 @pytest.fixture
 def propagator():
-    return TrivialPropagator(seed=42)
+    return TrivialPropagator()
 
 
 @pytest.fixture
@@ -66,7 +59,6 @@ def sim(datafile, propagator):
     return Simulation(
         datafile=datafile,
         propagator=propagator,
-        pcoord_calculator=trivial_pcoord_calculator,
     )
 
 
@@ -80,11 +72,9 @@ class TestSimulationConstructor:
         sim = Simulation(
             datafile=datafile,
             propagator=propagator,
-            pcoord_calculator=trivial_pcoord_calculator,
         )
         assert sim.datafile == datafile
         assert sim.propagator is propagator
-        assert sim.pcoord_calculator is trivial_pcoord_calculator
 
     def test_default_bin_mapper_is_nop(self, sim):
         assert isinstance(sim.bin_mapper, NopMapper)
@@ -115,7 +105,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator="not_a_propagator",
-                pcoord_calculator=trivial_pcoord_calculator,
             )
 
     def test_invalid_pcoord_calculator_not_callable(self, datafile, propagator):
@@ -131,7 +120,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
-                pcoord_calculator=trivial_pcoord_calculator,
                 resampler="not_a_resampler",
             )
 
@@ -140,7 +128,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
-                pcoord_calculator=trivial_pcoord_calculator,
                 work_manager="not_a_work_manager",
             )
 
@@ -149,7 +136,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
-                pcoord_calculator=trivial_pcoord_calculator,
                 propagator_block_size=1.5,
             )
 
@@ -158,7 +144,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
-                pcoord_calculator=trivial_pcoord_calculator,
                 propagator_block_size=0,
             )
 
@@ -168,7 +153,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
-                pcoord_calculator=trivial_pcoord_calculator,
                 source=source,
             )
 
@@ -178,7 +162,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
-                pcoord_calculator=trivial_pcoord_calculator,
                 sinks=[sink],
             )
 
@@ -188,7 +171,6 @@ class TestSimulationConstructor:
         sim = Simulation(
             datafile=datafile,
             propagator=propagator,
-            pcoord_calculator=trivial_pcoord_calculator,
             source=source,
             sinks=[sink],
         )
@@ -200,7 +182,6 @@ class TestSimulationConstructor:
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
-                pcoord_calculator=trivial_pcoord_calculator,
                 istate_generator="not_callable",
             )
 
@@ -211,7 +192,6 @@ class TestSimulationConstructor:
         sim = Simulation(
             datafile=datafile,
             propagator=propagator,
-            pcoord_calculator=trivial_pcoord_calculator,
             plugins=[p_high, p_low, p_mid],
         )
         assert list(sim.plugins) == [p_low, p_mid, p_high]
@@ -221,7 +201,6 @@ class TestSimulationConstructor:
         sim = Simulation(
             datafile=datafile,
             propagator=propagator,
-            pcoord_calculator=trivial_pcoord_calculator,
             bin_mapper=mapper,
             bin_target_counts=3,
         )
@@ -389,7 +368,7 @@ class TestRun:
         sim.run(n_iters=1)
         assert len(sim.segments) == 1  # NopMapper with target_count=1
 
-    def test_run_multiple_iterations(self, sim, tmp_path):
+    def test_run_multiple_iterations(self, sim):
         sim.initialize(State(coord=[0.0]))
         sim.run(n_iters=3)
         assert sim.current_iteration == 4  # started at 1, ran 3 iterations
@@ -401,11 +380,10 @@ class TestRun:
         total_weight = sum(seg.weight for seg in sim.segments)
         assert pytest.approx(total_weight) == 1.0
 
-    def test_run_with_rectilinear_bin_mapper(self, tmp_path, propagator):
+    def test_run_with_rectilinear_bin_mapper(self, datafile, propagator):
         sim = Simulation(
-            datafile=str(tmp_path / "west.h5"),
+            datafile=datafile,
             propagator=propagator,
-            pcoord_calculator=trivial_pcoord_calculator,
             bin_mapper=RectilinearBinMapper([[-np.inf, 0.5, np.inf]]),
             bin_target_counts=2,
         )
@@ -434,8 +412,7 @@ class TestRun:
     def test_propagation_error_is_raised(self, datafile):
         sim = Simulation(
             datafile=datafile,
-            propagator=FailingPropagator(seed=0),
-            pcoord_calculator=trivial_pcoord_calculator,
+            propagator=FailingPropagator(),
         )
         sim.initialize(State(coord=[0.0]))
         from westpa.core.sim_manager import PropagationError
@@ -443,22 +420,25 @@ class TestRun:
         with pytest.raises(PropagationError):
             sim.run(n_iters=1)
 
-    def test_run_with_source_and_sink(self, tmp_path, propagator):
+    def test_run_with_source_and_sink(self, datafile, propagator):
         """Walkers that reach the sink should be recycled to the source."""
         source = Source(State(coord=[0.0]))
         # Sink: any segment whose final pcoord > 0.5 is recycled
         sink = Sink(lambda seg: seg.pcoord[-1, 0] > 0.5)
 
         sim = Simulation(
-            datafile=str(tmp_path / "west.h5"),
-            propagator=TrivialPropagator(delta=1.0, seed=0),  # large step → always sinks
-            pcoord_calculator=trivial_pcoord_calculator,
+            datafile=datafile,
+            propagator=TrivialPropagator(delta=1.0),  # large step → always sinks
             source=source,
             sinks=sink,
         )
         states = [State(coord=[0.0])]
         sim.initialize(states)
-        # Should not raise; recycled walkers are re-initiated from source
+
         sim.run(n_iters=2)
         total_weight = sum(seg.weight for seg in sim.segments)
         assert pytest.approx(total_weight) == 1.0
+
+        for segment in sim.segments:
+            assert segment.initial_state is None
+            assert segment.status == segment.Status.UNSET

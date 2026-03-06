@@ -38,19 +38,40 @@ def batched(iterable, n, *, strict=False):
         yield batch
 
 
+def trivial_pcoord_calculator(segment):
+    """Assign ``segment.final_state.coord`` to ``segment.pcoord``, and return the modified segment.
+
+    Parameters
+    ----------
+    segment : Segment
+        Segment to modify.
+
+    Returns
+    -------
+    Segment
+        Modified segment.
+
+    """
+    segment.pcoord = segment.final_state.coord
+    return segment
+
+
 class Simulation:
     """Interface for initializing and running a weighted ensemble simulation.
 
     Parameters
     ----------
-    datafile : str
-        Pathname of the HDF5 file used to store simulation data (e.g., 'west.h5').
+    datafile : str or BufferedIOBase
+        HDF5 file used to store simulation data. Either a pathname (e.g.,
+        ``'west.h5'``) or a binary stream may be provided.
     propagator : Propagator
-        Routine for simulating the dynamics of the system.
-    pcoord_calculator : Callable[[Segment], Segment]
+        Routine for simulating the model dynamics.
+    pcoord_calculator : Callable[[Segment], Segment], optional
         Routine for computing the progress coordinate(s). It should take a
         propagated segment, set its ``pcoord`` attribute, and return the
-        modified segment.
+        modified segment. Defaults to :func:`~westpa.trivial_pcoord_calculator`,
+        which is appropriate for simple models where the progress coordinate
+        space coincides with the full state space.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
@@ -71,8 +92,8 @@ class Simulation:
         randomizing one or more degrees of freedom). It should take a state in
         `source` as input, and return a new state.
     work_manager : WorkManager, optional
-        Work manager for executing calls to `propagator` and `pcoord_calculator`.
-        By default, calls are executed serially.
+        Work manager for executing calls to `propagator`, `pcoord_calculator`, and
+        `istate_generator`. By default, calls are executed serially.
     propagator_block_size : int, default 1
         Number of segments to process in a given call to `propagator`.
     plugins : iterable of Plugin, optional
@@ -108,7 +129,7 @@ class Simulation:
         *,
         datafile,
         propagator,
-        pcoord_calculator,
+        pcoord_calculator=None,
         bin_mapper=None,
         bin_target_counts=1,
         resampler=None,
@@ -134,7 +155,7 @@ class Simulation:
         self.data_manager = DataManager(datafile)
 
         self.propagator = propagator
-        self.pcoord_calculator = pcoord_calculator
+        self.pcoord_calculator = pcoord_calculator or trivial_pcoord_calculator
         self.update_bins(bin_mapper or NopMapper(), bin_target_counts)
         self.resampler = resampler or HuberKimResampler()
 
@@ -559,6 +580,7 @@ class Simulation:
             elif segment.final_state is None:
                 prepared_segments.append(segment)
             elif segment.pcoord is None:
+                # Immediately dispatch pending pcoord calculation tasks
                 future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
                 pcoord_futures.add(future)
                 futures.add(future)
@@ -620,8 +642,7 @@ class Simulation:
                         logger.error(f'propagation failed for segment {segment.seg_id}')
                         raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
                     self.segments[segment.seg_id] = segment
-                # self.data_manager.update_segments(self.current_iteration, segments)
-                # TODO: Enable the update above.
+                self.data_manager.update_segments(self.current_iteration, segments)
 
                 for segment in segments:
                     future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
