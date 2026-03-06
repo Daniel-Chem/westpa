@@ -235,8 +235,10 @@ class Segment:
         value = np.asarray(value)
         if not np.issubdtype(value.dtype, np.number):
             raise TypeError("scalar type of 'pcoord' must be numeric")
-        if value.ndim != 2:
-            raise ValueError("'pcoord' must be a 2-D array")
+        if value.ndim == 1:
+            value = value[np.newaxis, :]
+        elif value.ndim != 2:
+            raise ValueError("'pcoord' must be a 1-D or 2-D array")
         self._pcoord = value
 
     @property
