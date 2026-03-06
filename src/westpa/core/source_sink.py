@@ -17,23 +17,19 @@ class Source:
 
     Examples
     --------
-    Single state:
 
     >>> import westpa
-    >>> westpa.Source(westpa.State(label='a'))
-    Source([State(label='a')], p=[1.0])
+    >>> states = [westpa.State(coord=[0.0]), westpa.State(coord=[1.0])]
 
-    Two states with equal probabilities:
+    Uniform selection probabilities (default):
 
-    >>> states = [westpa.State(label='a'), westpa.State(label='b')]
     >>> westpa.Source(states)
-    Source([State(label='a'), State(label='b')], p=[0.5, 0.5])
+    Source([State(coord=[0.0]), State(coord=[1.0])], p=[0.5, 0.5])
 
-    Two states with different probabilities:
+    Non-uniform selection probabilities:
 
     >>> westpa.Source(states, p=[0.7, 0.3])
-    Source([State(label='a'), State(label='b')], p=[0.7, 0.3])
-
+    Source([State(coord=[0.0]), State(coord=[1.0])], p=[0.7, 0.3])
 
     """
 
@@ -61,6 +57,22 @@ class Source:
         return type(self).__name__ + '(' + args + ')'
 
     def random_choice(self, k=1, seed=None):
+        """Generate a random sample of source states.
+
+        Parameters
+        ----------
+        k : int, optional
+            Sample size.
+        seed : int, sequence of int, or numpy.random.Generator, optional
+            Seed to pass to ``numpy.random.default_rng()``. If a ``Generator`` is
+            passed, it will be used directly.
+
+        Returns
+        -------
+        iterable of State
+            Generated sample of `k` states.
+
+        """
         rng = np.random.default_rng(seed)
         return rng.choice(self.states, p=self.p, size=k).tolist()
 
@@ -75,11 +87,7 @@ class Sink(Container):
         sink, False otherwise. This function may assume that the segment has
         completed propagation and that its ``pcoord`` attribute has been set.
     label : str, optional
-        Label for the sink.
-
-    Methods
-    -------
-    __contains__
+        Descriptive label for the sink.
 
     Examples
     --------
@@ -87,7 +95,7 @@ class Sink(Container):
     (``0``) progress coordinate values greater than one:
 
     >>> import westpa
-    >>> sink = westpa.Sink(lambda segment: segment.pcoord[-1, 0] > 1.0)
+    >>> sink = westpa.Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
 
     Test for membership:
 

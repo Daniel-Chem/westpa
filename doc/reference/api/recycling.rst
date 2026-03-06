@@ -2,7 +2,7 @@ Sources and sinks
 =================
 
 .. autoclass:: westpa.Source
-   :members:
+   :members: random_choice
 
 .. autoclass:: westpa.Sink
-   :members:
+   :show-inheritance:
