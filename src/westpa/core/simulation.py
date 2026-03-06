@@ -39,17 +39,17 @@ def batched(iterable, n, *, strict=False):
 
 
 def trivial_pcoord_calculator(segment):
-    """Assign ``segment.final_state.coord`` to ``segment.pcoord``, and return the modified segment.
+    """Set a segment's ``pcoord`` to ``final_state.coord``, and return the modified segment.
 
     Parameters
     ----------
     segment : Segment
-        Segment to modify.
+        Propagated segment.
 
     Returns
     -------
     Segment
-        Modified segment.
+        Modified segment, with ``pcoord`` set to ``final_state.coord``.
 
     """
     segment.pcoord = segment.final_state.coord
@@ -65,7 +65,7 @@ class Simulation:
         HDF5 file used to store simulation data. Either a pathname (e.g.,
         ``'west.h5'``) or a binary stream may be provided.
     propagator : Propagator
-        Routine for simulating the model dynamics.
+        Routine for simulating the model dynamics over a fixed time interval :math:`\\tau`.
     pcoord_calculator : Callable[[Segment], Segment], optional
         Routine for computing the progress coordinate(s). It should take a
         propagated segment, set its ``pcoord`` attribute, and return the
@@ -84,13 +84,13 @@ class Simulation:
         ``HuberKimResampler()``.
     source : Source, optional
         Distribution according to which to re-initiate (recycle) walkers that
-        reach one of the `sinks`. Must be provided together with `sinks`.
+        reach a sink. Must be provided together with `sinks`.
     sinks : Sink or iterable of Sink, optional
         One or more sink (target) regions. Must be provided together with `source`.
     istate_generator : Callable[[State], State], optional
-        Routine for modifying the `source` distribution on-the-fly (e.g., by
-        randomizing one or more degrees of freedom). It should take a state in
-        `source` as input, and return a new state.
+        Routine for modifying the source distribution on the fly (e.g., by
+        randomizing one or more degrees of freedom). It should take a state
+        from `source` as input and return a new state.
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator`, `pcoord_calculator`, and
         `istate_generator`. By default, calls are executed serially.
@@ -306,8 +306,7 @@ class Simulation:
         initial_states : State or iterable of State
             States from which to initiate trajectories (one per trajectory).
         weights : 1-D array-like, optional
-            Weight to assign each trajectory. If not provided, uniform weights
-            are assumed.
+            Weight to assign each trajectory. Defaults to a uniform distribution.
 
         """
         if os.path.exists(self.datafile):
