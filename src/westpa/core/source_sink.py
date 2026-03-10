@@ -6,7 +6,7 @@ from .state import State
 
 
 class Source:
-    """Represents a source (initial) distribution.
+    """Distribution according to which walkers that reach a :class:`Sink` are re-initiated (recycled).
 
     Parameters
     ----------
@@ -22,6 +22,9 @@ class Source:
     >>> states = [westpa.State(coord=[0.0]), westpa.State(coord=[1.0])]
     >>> westpa.Source(states)
     Source([State(coord=array([0.])), State(coord=array([1.]))], p=[0.5, 0.5])
+
+    Non-uniform selection probability:
+
     >>> westpa.Source(states, p=[0.7, 0.3])
     Source([State(coord=array([0.])), State(coord=array([1.]))], p=[0.7, 0.3])
 
@@ -78,15 +81,13 @@ class Sink(Container):
     ----------
     indicator : Callable[[Segment], bool]
         Function that returns True if a given trajectory segment reached the
-        sink, False otherwise. This function may assume that the segment has
-        completed propagation and that its ``pcoord`` attribute has been set.
+        sink, False otherwise. This function may assume that the segment is
+        ``COMPLETE`` and that its ``pcoord`` attribute is set.
     label : str, optional
         Descriptive label for the sink.
 
     Examples
     --------
-    Create a sink containing segments with final (``-1``), first-dimension
-    (``0``) progress coordinate values greater than one:
 
     >>> import westpa
     >>> sink = westpa.Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
