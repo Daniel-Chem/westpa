@@ -11,10 +11,18 @@ from westpa.core.data_manager import (
     summary_table_dtype,
     normalize_dataset_options,
     require_dataset_from_dsopts,
+    vstr_dtype,
 )
 from westpa.core.segment import Segment
 
 logger = logging.getLogger(__name__)
+
+state_dtype = np.dtype(
+    [
+        ('file', vstr_dtype),  # file containing coordinate data
+        ('label', vstr_dtype),  # optional descriptive label
+    ]
+)
 
 
 class DataManager(WESTDataManager):
@@ -54,7 +62,7 @@ class DataManager(WESTDataManager):
 
             iter_group = self.require_iter_group(n_iter)
 
-            for linkname in ('seg_index', 'wtgraph'):
+            for linkname in ('seg_index', 'wtgraph', 'initial_states', 'final_states'):
                 try:
                     del iter_group[linkname]
                 except KeyError:
@@ -107,30 +115,25 @@ class DataManager(WESTDataManager):
             # the changes out to HDF5
             seg_index_table_ds[:] = seg_index_table
 
+            prepared_segments = [s for s in segments if s.initial_state is not None]
+            if prepared_segments:
+                self.write_initial_states(prepared_segments)
+
     def update_segments(self, n_iter, segments):
         """Update segment information in the HDF5 file; all prior information for each
         segment is overwritten, except for parent and weight transfer information.
 
-        Segments with ``pcoord=None`` are accepted: their index metadata (status,
-        weight, etc.) is written, but no pcoord entry is created or updated for
-        them.  pcoord shape and dtype are inferred from the first segment that
-        has a pcoord set.
-
         Parameters
         ----------
         n_iter : int
-            Iteration number
+            Iteration number.
         segments : iterable of Segment
-            Segments with updated information (final state, progress coordinates,
-            end-point type, etc.).
+            Segments to update.
 
         """
         segments = sorted(segments, key=attrgetter('seg_id'))
-        segments_with_pcoord = [s for s in segments if s.pcoord is not None]
 
         with self.lock:
-            summary_table = self.we_h5file['summary']
-            n_particles = summary_table[n_iter - 1]['n_particles']
             iter_group = self.get_iter_group(n_iter)
 
             si_dsid = iter_group['seg_index'].id
@@ -138,8 +141,6 @@ class DataManager(WESTDataManager):
             seg_ids = [segment.seg_id for segment in segments]
             n_segments = len(segments)
             n_total_segments = si_dsid.shape[0]
-
-            # --- seg_index update (all segments) ---
 
             seg_index_entries = np.empty((n_segments,), dtype=seg_index_dtype)
 
@@ -151,45 +152,49 @@ class DataManager(WESTDataManager):
                 op = h5s.SELECT_OR if iseg != 0 else h5s.SELECT_SET
                 si_fsel.select_hyperslab((seg_id,), (1,), op=op)
 
-            # read so that we preserve parent and weight transfer information
+            # read summary data so that we have value, parent and weight transfer information
             si_dsid.read(si_msel, si_fsel, seg_index_entries)
 
-            for ientry, segment in zip(seg_index_entries, segments):
-                ientry['status'] = segment.status
-                ientry['endpoint_type'] = segment.endpoint_type or Segment.SEG_ENDPOINT_UNSET
-                ientry['cputime'] = segment.cputime
-                ientry['walltime'] = segment.walltime
-                ientry['weight'] = segment.weight
+            for entry, segment in zip(seg_index_entries, segments):
+                entry['status'] = segment.status
+                entry['endpoint_type'] = segment.endpoint_type or Segment.SEG_ENDPOINT_UNSET
+                entry['cputime'] = segment.cputime
+                entry['walltime'] = segment.walltime
+                entry['weight'] = segment.weight
 
             si_dsid.write(si_msel, si_fsel, seg_index_entries)
 
-            # --- pcoord update (only segments that have a pcoord) ---
+            # initial and final states
+            if segments[0].initial_state is not None:
+                self.write_initial_states(segments)
+            if segments[0].final_state is not None:
+                self.write_final_states(segments)
 
-            if segments_with_pcoord:
-                pcoord_len = segments_with_pcoord[0].pcoord.shape[0]
-                pcoord_ndim = segments_with_pcoord[0].pcoord.shape[1]
-                pcoord_dtype = segments_with_pcoord[0].pcoord.dtype
+            # progress coordinates
+            if segments[0].pcoord is not None:
+                default_pcoord_opts = {'name': 'pcoord', 'h5path': 'pcoord', 'compression': False}
+                pcoord_opts = self.dataset_options.get('pcoord', default_pcoord_opts)
 
-                pcoord_opts = self.dataset_options.get('pcoord', {'name': 'pcoord', 'h5path': 'pcoord', 'compression': False})
-                pcoord_ds = require_dataset_from_dsopts(
-                    iter_group, pcoord_opts, (n_particles, pcoord_len, pcoord_ndim), pcoord_dtype
-                )
+                pcoord_ndim = segments[0].pcoord.shape[1]
+                pcoord_len = segments[0].pcoord.shape[0]
+                pcoord_dtype = segments[0].pcoord.dtype
+
+                shape = (n_total_segments, pcoord_len, pcoord_ndim)
+                pcoord_ds = require_dataset_from_dsopts(iter_group, pcoord_opts, shape, pcoord_dtype)
 
                 pc_dsid = pcoord_ds.id
-                pc_seg_ids = [s.seg_id for s in segments_with_pcoord]
-                n_pc_segments = len(segments_with_pcoord)
-
-                pcoord_entries = np.empty((n_pc_segments, pcoord_len, pcoord_ndim), dtype=pcoord_dtype)
-                for ipc, segment in enumerate(segments_with_pcoord):
-                    pcoord_entries[ipc] = segment.pcoord
+                pcoord_entries = np.empty((n_segments, pcoord_len, pcoord_ndim), dtype=pcoord_dtype)
 
                 pc_msel = h5s.create_simple(pcoord_entries.shape, (h5s.UNLIMITED,) * pcoord_entries.ndim)
                 pc_msel.select_all()
                 pc_fsel = pc_dsid.get_space()
 
-                for ipc, seg_id in enumerate(pc_seg_ids):
-                    op = h5s.SELECT_OR if ipc != 0 else h5s.SELECT_SET
+                for iseg, seg_id in enumerate(seg_ids):
+                    op = h5s.SELECT_OR if iseg != 0 else h5s.SELECT_SET
                     pc_fsel.select_hyperslab((seg_id, 0, 0), (1, pcoord_len, pcoord_ndim), op=op)
+
+                for entry, segment in zip(pcoord_entries, segments):
+                    entry = segment.pcoord
 
                 pc_dsid.write(pc_msel, pc_fsel, pcoord_entries)
 
@@ -245,3 +250,85 @@ class DataManager(WESTDataManager):
                         del dsets[dsname]
 
             self.update_iter_h5file(n_iter, segments)
+
+    def write_initial_states(self, segments):
+        segments = sorted(segments, key=attrgetter('seg_id'))
+        if not segments:
+            return
+
+        iter_group = self.get_iter_group(segments[0].n_iter)
+        group = iter_group.require_group('initial_states')
+
+        n_segments = len(segments)
+        n_total_segments = iter_group['seg_index'].shape[0]
+
+        # index
+        ds = group.require_dataset('index', (n_total_segments,), dtype=state_dtype)
+        dsid = ds.id
+        entries = np.empty((n_segments,), dtype=state_dtype)
+        msel = h5s.create_simple(entries.shape, (h5s.UNLIMITED,))
+        msel.select_all()
+        fsel = dsid.get_space()
+        for i, segment in enumerate(segments):
+            op = h5s.SELECT_OR if i != 0 else h5s.SELECT_SET
+            fsel.select_hyperslab((segment.seg_id,), (1,), op=op)
+        for entry, segment in zip(entries, segments):
+            entry['file'] = segment.initial_state.file or ''
+            entry['label'] = segment.initial_state.label
+        dsid.write(msel, fsel, entries)
+
+        # coord
+        if (coord := segments[0].initial_state.coord) is not None:
+            ds = group.require_dataset('coord', (n_total_segments, len(coord)), dtype=coord.dtype)
+            dsid = ds.id
+            entries = np.empty((n_segments, len(coord)), dtype=coord.dtype)
+            msel = h5s.create_simple(entries.shape, (h5s.UNLIMITED,) * entries.ndim)
+            msel.select_all()
+            fsel = dsid.get_space()
+            for i, segment in enumerate(segments):
+                op = h5s.SELECT_OR if i != 0 else h5s.SELECT_SET
+                fsel.select_hyperslab((segment.seg_id, 0), (1, len(coord)), op=op)
+            for entry, segment in zip(entries, segments):
+                entry = segment.initial_state.coord
+            dsid.write(msel, fsel, entries)
+
+    def write_final_states(self, segments):
+        segments = sorted(segments, key=attrgetter('seg_id'))
+        if not segments:
+            return
+
+        iter_group = self.get_iter_group(segments[0].n_iter)
+        group = iter_group.require_group('final_states')
+
+        n_segments = len(segments)
+        n_total_segments = iter_group['seg_index'].shape[0]
+
+        # index
+        ds = group.require_dataset('index', (n_total_segments,), dtype=state_dtype)
+        dsid = ds.id
+        entries = np.empty((n_segments,), dtype=state_dtype)
+        msel = h5s.create_simple(entries.shape, (h5s.UNLIMITED,))
+        msel.select_all()
+        fsel = dsid.get_space()
+        for i, segment in enumerate(segments):
+            op = h5s.SELECT_OR if i != 0 else h5s.SELECT_SET
+            fsel.select_hyperslab((segment.seg_id,), (1,), op=op)
+        for entry, segment in zip(entries, segments):
+            entry['file'] = segment.final_state.file or ''
+            entry['label'] = segment.final_state.label
+        dsid.write(msel, fsel, entries)
+
+        # coord
+        if (coord := segments[0].final_state.coord) is not None:
+            ds = group.require_dataset('coord', (n_total_segments, len(coord)), dtype=coord.dtype)
+            dsid = ds.id
+            entries = np.empty((n_segments, len(coord)), dtype=coord.dtype)
+            msel = h5s.create_simple(entries.shape, (h5s.UNLIMITED,) * entries.ndim)
+            msel.select_all()
+            fsel = dsid.get_space()
+            for i, segment in enumerate(segments):
+                op = h5s.SELECT_OR if i != 0 else h5s.SELECT_SET
+                fsel.select_hyperslab((segment.seg_id, 0), (1, len(coord)), op=op)
+            for entry, segment in zip(entries, segments):
+                entry = segment.final_state.coord
+            dsid.write(msel, fsel, entries)
