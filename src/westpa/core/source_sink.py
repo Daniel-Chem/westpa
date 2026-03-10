@@ -20,16 +20,10 @@ class Source:
 
     >>> import westpa
     >>> states = [westpa.State(coord=[0.0]), westpa.State(coord=[1.0])]
-
-    Uniform selection probabilities (default):
-
     >>> westpa.Source(states)
-    Source([State(coord=[0.0]), State(coord=[1.0])], p=[0.5, 0.5])
-
-    Non-uniform selection probabilities:
-
+    Source([State(coord=array([0.])), State(coord=array([1.]))], p=[0.5, 0.5])
     >>> westpa.Source(states, p=[0.7, 0.3])
-    Source([State(coord=[0.0]), State(coord=[1.0])], p=[0.7, 0.3])
+    Source([State(coord=array([0.])), State(coord=array([1.]))], p=[0.7, 0.3])
 
     """
 
@@ -57,7 +51,7 @@ class Source:
         return type(self).__name__ + '(' + args + ')'
 
     def random_choice(self, k=1, seed=None):
-        """Generate a random sample of source states.
+        """Generate a random sample of states from the source distribution.
 
         Parameters
         ----------
