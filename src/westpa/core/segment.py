@@ -25,13 +25,13 @@ class _AuxiliaryData(UserDict):
 class Segment:
     """Describes a trajectory segment.
 
-    :class:`Segment` objects should only be created directly for testing purposes.
+    ``Segment`` objects should only be created directly for testing purposes.
 
     Attributes
     ----------
     weight : float
-    initial_state : :class:`~westpa.State`
-    final_state : :class:`~westpa.State` or None
+    initial_state : State or None
+    final_state : State or None
     pcoord : numpy.ndarray or None
     data : MutableMapping[str, numpy.ndarray]
     walltime : float
@@ -68,7 +68,7 @@ class Segment:
         UNSET = 0  #: Null value.
         CONTINUES = 1  #: Indicates that a segment survived resampling (and recycling).
         MERGED = 2  #: Indicates that a segment was pruned during resampling.
-        RECYCLED = 3  #: Indicates that a segment was recycled because it reached the sink (target).
+        RECYCLED = 3  #: Indicates that a segment was recycled because it reached a sink (target).
 
     SEG_STATUS_UNSET = Status.UNSET
     SEG_STATUS_PREPARED = Status.PREPARED
@@ -147,7 +147,7 @@ class Segment:
 
     @property
     def n_iter(self):
-        """Iteration in which the segment was created."""
+        """Iteration to which the segment belongs."""
         return self._n_iter
 
     @n_iter.setter
@@ -158,7 +158,7 @@ class Segment:
 
     @property
     def seg_id(self):
-        """Index of the segment (0-based)."""
+        """Segment index (0-based)."""
         return self._seg_id
 
     @seg_id.setter
@@ -194,22 +194,25 @@ class Segment:
 
     @property
     def initial_state(self):
-        """Initial microstate."""
+        """Initial state. Setting this property marks the segment as :attr:`~Segment.Status.PREPARED`."""
         return self._initial_state
+
+    @initial_state.setter
+    def initial_state(self, value):
+        if not isinstance(value, State):
+            raise TypeError("'initial_state' must be a State object")
+        self._final_state = value
+        self.status = Segment.Status.PREPARED
 
     @property
     def final_state(self):
-        """Final microstate (set by the propagator).
-
-        Setting ``final_state`` marks the segment as complete.
-
-        """
+        """Final state. Setting this property marks the segment as :attr:`~Segment.Status.COMPLETE`."""
         return self._final_state
 
     @final_state.setter
     def final_state(self, value):
         if not isinstance(value, State):
-            raise TypeError("'final_state' must be a westpa.State object")
+            raise TypeError("'final_state' must be a State object")
         self._final_state = value
         self.status = Segment.Status.COMPLETE
 
@@ -247,7 +250,7 @@ class Segment:
         return self._data
 
     def mark_as_failed(self, reason):
-        """Mark the segment as failed due to a propagation error.
+        """Mark the segment as :attr:`~Segment.Status.FAILED` due to a propagation error.
 
         Parameters
         ----------
@@ -313,7 +316,7 @@ class Segment:
     @property
     def endpoint_type(self):
         """Whether the segment survived to the next iteration, was merged away during
-        resampling, or was recycled because it reached the sink (target) state."""
+        resampling, or was recycled because it reached a sink (target) region."""
         return self._endpoint_type
 
     @endpoint_type.setter
