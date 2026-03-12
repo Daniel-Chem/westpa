@@ -4,7 +4,7 @@ import numpy as np
 class State:
     """Describes a specific configuration (i.e., a microstate) of the model being simulated.
 
-    Either the `coord` parameter or the `file` parameter must be specified.
+    At least one of `coord` or `file` must be provided.
 
     Parameters
     ----------
@@ -41,7 +41,7 @@ class State:
 
     def __init__(self, *, coord=None, file=None):
         if coord is None and file is None:
-            raise ValueError("either 'coord' or 'file' must be provided")
+            raise ValueError("at least one of 'coord' or 'file' must be provided")
 
         if coord is not None:
             coord = np.asarray(coord)
