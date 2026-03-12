@@ -201,7 +201,7 @@ class Segment:
     def initial_state(self, value):
         if not isinstance(value, State):
             raise TypeError("'initial_state' must be a State object")
-        self._final_state = value
+        self._initial_state = value
         self.status = Segment.Status.PREPARED
 
     @property
