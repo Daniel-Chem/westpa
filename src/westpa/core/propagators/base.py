@@ -70,12 +70,12 @@ class BatchedPropagator(Propagator):
 
         Parameters
         ----------
-        segments : sequence of Segment
+        segments : iterable of Segment
             Segments to propagate.
 
         Returns
         -------
-        sequence of Segment
+        iterable of Segment
             Propagated segments.
 
         """

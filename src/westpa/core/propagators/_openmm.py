@@ -60,12 +60,10 @@ class OpenMMReport:
 class OpenMMPropagator(Propagator):
     """Molecular dynamics propagator built on the `OpenMM <https://openmm.org/>`_ toolkit.
 
-    This propagator assumes that states are specified by reference to XML files
-    containing serialized OpenMM
-    `State <https://docs.openmm.org/latest/api-python/generated/openmm.openmm.State.html>`_
-    objects, for example::
+    When using this propagator, states should be specified by providing the
+    absolute path to an XML file containing a serialized OpenMM State object::
 
-        state = westpa.State(file=os.path.abspath('state.xml'))
+        state = westpa.State(file='/path/to/state.xml')
 
     Parameters
     ----------
