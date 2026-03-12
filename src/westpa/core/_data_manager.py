@@ -13,7 +13,9 @@ from westpa.core.data_manager import (
     require_dataset_from_dsopts,
     vstr_dtype,
 )
+from westpa.core.h5io import tostr
 from westpa.core.segment import Segment
+from westpa.core.state import State
 
 logger = logging.getLogger(__name__)
 
@@ -309,3 +311,27 @@ class DataManager(WESTDataManager):
                 entry['coord'] = state.coord
 
         dsid.write(msel, fsel, entries)
+
+    def get_segments(self, n_iter=None, seg_ids=None, load_pcoords=True):
+        segments = super().get_segments(n_iter, seg_ids, load_pcoords)
+
+        seg_ids = [s.seg_id for s in segments]
+        iter_group = self.get_iter_group(n_iter)
+
+        if 'initial_states' in iter_group:
+            rows = iter_group['initial_states'][seg_ids]
+            for segment, row in zip(segments, rows):
+                segment.initial_state = State(
+                    coord=row['coord'] if 'coord' in row.dtype.names else None,
+                    file=tostr(row['file']) if 'file' in row.dtype.names else None,
+                )
+
+        if 'final_states' in iter_group:
+            rows = iter_group['final_states'][seg_ids]
+            for segment, row in zip(segments, rows):
+                segment.final_state = State(
+                    coord=row['coord'] if 'coord' in row.dtype.names else None,
+                    file=tostr(row['file']) if 'file' in row.dtype.names else None,
+                )
+
+        return segments
