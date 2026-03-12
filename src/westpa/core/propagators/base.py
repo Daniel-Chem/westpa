@@ -85,4 +85,4 @@ class BatchedPropagator(Propagator):
         return self.propagate_batch([segment])[0]
 
     def __call__(self, segments):
-        return self.propagate_batch(segments)
+        return list(self.propagate_batch(segments))
