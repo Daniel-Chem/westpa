@@ -55,7 +55,7 @@ class State:
 
     @property
     def coord(self):
-        """Coordinate tuple."""
+        """Coordinate vector."""
         return self._coord.copy() if self._coord is not None else None
 
     @property
