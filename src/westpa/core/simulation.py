@@ -601,7 +601,7 @@ class Simulation:
                     segment = unprepared_segments.pop()
                     segment = segment.copy(initial_state=state, status=Segment.Status.PREPARED)
                     prepared_segments.append(segment)
-                self.data_manager.update_segments(self.current_iteration, prepared_segments)
+                self.data_manager.write_initial_states(self.current_iteration, prepared_segments)
 
         for segments in batched(prepared_segments, self.propagator_block_size):
             future = self.work_manager.submit(self.propagator, args=(segments,))
@@ -624,7 +624,7 @@ class Simulation:
                 prepared_segments.append(segment)
 
                 self.segments[segment.seg_id] = segment
-                self.data_manager.update_segments(self.current_iteration, segments=[segment])
+                self.data_manager.write_initial_states(self.current_iteration, segments=[segment])
 
                 if len(prepared_segments) == self.propagator_block_size or not istate_futures:
                     future = self.work_manager.submit(self.propagator, args=(prepared_segments,))
@@ -641,7 +641,7 @@ class Simulation:
                         logger.error(f'propagation failed for segment {segment.seg_id}')
                         raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
                     self.segments[segment.seg_id] = segment
-                self.data_manager.update_segments(self.current_iteration, segments)
+                self.data_manager.write_final_states(self.current_iteration, segments)
 
                 for segment in segments:
                     future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
@@ -652,7 +652,7 @@ class Simulation:
                 pcoord_futures.remove(future)
                 segment = future.get_result()
                 self.segments[segment.seg_id] = segment
-                self.data_manager.update_segments(self.current_iteration, segments=[segment])
+                self.data_manager.write_pcoords(self.current_iteration, segments=[segment])
 
         logger.debug('done with propagation')
 
@@ -712,7 +712,7 @@ class Simulation:
             if segment.endpoint_type == Segment.EndPointType.UNSET:
                 segment.endpoint_type = Segment.EndPointType.MERGED
 
-        self.data_manager.update_segments(self.current_iteration, self.segments)
+        self.data_manager.finalize_iteration(self.current_iteration, self.segments)
         self.data_manager.prepare_iteration(self.current_iteration + 1, self.next_iter_segments)
 
         self._call_plugin_method(Plugin.prepare_new_iteration)

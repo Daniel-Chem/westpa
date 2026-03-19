@@ -1,3 +1,4 @@
+import h5py
 import numpy as np
 
 
@@ -71,3 +72,14 @@ class State:
             kwargs['file'] = self._file
         params = ', '.join(f'{k}={v!r}' for k, v in kwargs.items())
         return type(self).__name__ + '(' + params + ')'
+
+    def to_numpy(self):
+        fields = []
+        values = []
+        if (file := self.file) is not None:
+            fields.append(('file', h5py.special_dtype(vlen=str)))
+            values.append(file)
+        if (coord := self.coord) is not None:
+            fields.append(('coord', coord.dtype, coord.shape))
+            values.append(coord)
+        return np.array(values, dtype=np.dtype(fields))
