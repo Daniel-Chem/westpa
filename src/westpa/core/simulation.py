@@ -559,6 +559,7 @@ class Simulation:
 
     def _finalize_iteration(self):
         logger.debug('finalizing iteration {:d}'.format(self.current_iteration))
+        self.data_manager.finalize_iteration(self.current_iteration, self.segments)
         self._call_plugin_method(Plugin.finalize_iteration)
         logger.info("Iteration completed successfully")
 
@@ -712,7 +713,6 @@ class Simulation:
             if segment.endpoint_type == Segment.EndPointType.UNSET:
                 segment.endpoint_type = Segment.EndPointType.MERGED
 
-        self.data_manager.finalize_iteration(self.current_iteration, self.segments)
         self.data_manager.prepare_iteration(self.current_iteration + 1, self.next_iter_segments)
 
         self._call_plugin_method(Plugin.prepare_new_iteration)

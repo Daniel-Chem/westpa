@@ -12,8 +12,6 @@ from westpa.core.data_manager import (
     normalize_dataset_options,
     require_dataset_from_dsopts,
 )
-from westpa.core.h5io import tostr
-from westpa.core.segment import Segment
 from westpa.core.state import State
 
 logger = logging.getLogger(__name__)
@@ -100,43 +98,28 @@ class DataManager(WESTDataManager):
                 self.write_initial_states(n_iter, prepared_segments)
 
     def finalize_iteration(self, n_iter, segments):
-        segments = sorted(segments, key=attrgetter('seg_id'))
+        n_particles = len(segments)
 
         with self.lock:
             iter_group = self.get_iter_group(n_iter)
 
-            si_dsid = iter_group['seg_index'].id
+            seg_index_table_ds = iter_group['seg_index']
+            seg_index_table = seg_index_table_ds[...]
 
-            seg_ids = [segment.seg_id for segment in segments]
-            n_segments = len(segments)
-            n_total_segments = si_dsid.shape[0]
+            for segment in segments:
+                seg_id = segment.seg_id
+                seg_index_table[seg_id]['status'] = segment.status
+                seg_index_table[seg_id]['endpoint_type'] = segment.endpoint_type
+                seg_index_table[seg_id]['cputime'] = segment.cputime
+                seg_index_table[seg_id]['walltime'] = segment.walltime
+                seg_index_table[seg_id]['weight'] = segment.weight
 
-            seg_index_entries = np.empty((n_segments,), dtype=seg_index_dtype)
-
-            si_msel = h5s.create_simple(seg_index_entries.shape, (h5s.UNLIMITED,))
-            si_msel.select_all()
-            si_fsel = si_dsid.get_space()
-
-            for iseg, seg_id in enumerate(seg_ids):
-                op = h5s.SELECT_OR if iseg != 0 else h5s.SELECT_SET
-                si_fsel.select_hyperslab((seg_id,), (1,), op=op)
-
-            # read summary data so that we have value, parent and weight transfer information
-            si_dsid.read(si_msel, si_fsel, seg_index_entries)
-
-            for entry, segment in zip(seg_index_entries, segments):
-                entry['status'] = segment.status
-                entry['endpoint_type'] = segment.endpoint_type or Segment.SEG_ENDPOINT_UNSET
-                entry['cputime'] = segment.cputime
-                entry['walltime'] = segment.walltime
-                entry['weight'] = segment.weight
-
-            si_dsid.write(si_msel, si_fsel, seg_index_entries)
+            seg_index_table_ds[:] = seg_index_table
 
             # Now, to deal with auxiliary data
             # If any segment has any auxiliary data, then the aux dataset must spring into
             # existence. Each is named according to the name in segment.data, and has shape
-            # (n_total_segs, ...) where the ... is the shape of the data in segment.data (and may be empty
+            # (n_particles, ...) where the ... is the shape of the data in segment.data (and may be empty
             # in the case of scalar data) and dtype is taken from the data type of the data entry
             # compression is on by default for datasets that will be more than 1MiB
 
@@ -156,13 +139,12 @@ class DataManager(WESTDataManager):
             # Then we iterate over data sets and store data
             if dsets:
                 for dsname, (shape, dtype) in dsets.items():
-                    # dset = self._require_aux_dataset(iter_group, dsname, n_total_segments, shape, dtype)
                     try:
                         dsopts = self.dataset_options[dsname]
                     except KeyError:
                         dsopts = normalize_dataset_options({'name': dsname}, path_prefix='auxdata')
 
-                    shape = (n_total_segments,) + shape
+                    shape = (n_particles,) + shape
                     dset = require_dataset_from_dsopts(
                         iter_group, dsopts, shape, dtype, autocompress_threshold=self.aux_compression_threshold, n_iter=n_iter
                     )
@@ -197,17 +179,16 @@ class DataManager(WESTDataManager):
             Set of segments belonging to iteration `n_iter`.
 
         """
-        state_records = [segment.initial_state.to_numpy() for segment in segments]
-        dtype = state_records[0].dtype  # infer dtype from first segment
+        arrays = [segment.initial_state.to_numpy() for segment in segments]
+        dtype = arrays[0].dtype  # infer dtype from first segment
+        entries = np.fromiter(arrays, dtype=dtype)
 
         with self.lock:
             iter_group = self.get_iter_group(n_iter)
             n_total_segments = iter_group['seg_index'].shape[0]
-            n_segments = len(segments)
 
             ds = iter_group.require_dataset('initial_states', (n_total_segments,), dtype=dtype)
             dsid = ds.id
-            entries = np.empty((n_segments,), dtype=dtype)
 
             msel = h5s.create_simple(entries.shape, (h5s.UNLIMITED,))
             msel.select_all()
@@ -215,7 +196,6 @@ class DataManager(WESTDataManager):
             for i, segment in enumerate(segments):
                 op = h5s.SELECT_OR if i != 0 else h5s.SELECT_SET
                 fsel.select_hyperslab((segment.seg_id,), (1,), op=op)
-                entries[i] = state_records[i]
 
             dsid.write(msel, fsel, entries)
 
@@ -230,17 +210,16 @@ class DataManager(WESTDataManager):
             Set of segments belonging to iteration `n_iter`.
 
         """
-        state_records = [segment.final_state.to_numpy() for segment in segments]
-        dtype = state_records[0].dtype  # infer dtype from first segment
+        arrays = [segment.final_state.to_numpy() for segment in segments]
+        dtype = arrays[0].dtype  # infer dtype from first segment
+        entries = np.fromiter(arrays, dtype=dtype)
 
         with self.lock:
             iter_group = self.get_iter_group(n_iter)
             n_total_segments = iter_group['seg_index'].shape[0]
-            n_segments = len(segments)
 
             ds = iter_group.require_dataset('final_states', (n_total_segments,), dtype=dtype)
             dsid = ds.id
-            entries = np.empty((n_segments,), dtype=dtype)
 
             msel = h5s.create_simple(entries.shape, (h5s.UNLIMITED,))
             msel.select_all()
@@ -248,7 +227,6 @@ class DataManager(WESTDataManager):
             for i, segment in enumerate(segments):
                 op = h5s.SELECT_OR if i != 0 else h5s.SELECT_SET
                 fsel.select_hyperslab((segment.seg_id,), (1,), op=op)
-                entries[i] = state_records[i]
 
             dsid.write(msel, fsel, entries)
 
@@ -296,19 +274,10 @@ class DataManager(WESTDataManager):
         iter_group = self.get_iter_group(n_iter)
 
         if 'initial_states' in iter_group:
-            rows = iter_group['initial_states'][seg_ids]
-            for segment, row in zip(segments, rows):
-                segment.initial_state = State(
-                    coord=row['coord'] if 'coord' in row.dtype.names else None,
-                    file=tostr(row['file']) if 'file' in row.dtype.names else None,
-                )
-
+            for segment, array in zip(segments, iter_group['initial_states'][seg_ids]):
+                segment.initial_state = State.from_numpy(array)
         if 'final_states' in iter_group:
-            rows = iter_group['final_states'][seg_ids]
-            for segment, row in zip(segments, rows):
-                segment.final_state = State(
-                    coord=row['coord'] if 'coord' in row.dtype.names else None,
-                    file=tostr(row['file']) if 'file' in row.dtype.names else None,
-                )
+            for segment, array in zip(segments, iter_group['final_states'][seg_ids]):
+                segment.final_state = State.from_numpy(array)
 
         return segments

@@ -3,6 +3,7 @@
 import pytest
 import numpy as np
 
+from westpa.core.sim_manager import PropagationError
 from westpa.core.simulation import Simulation
 from westpa.core.state import State
 from westpa.core.segment import Segment
@@ -415,8 +416,6 @@ class TestRun:
             propagator=FailingPropagator(),
         )
         sim.initialize(State(coord=[0.0]))
-        from westpa.core.sim_manager import PropagationError
-
         with pytest.raises(PropagationError):
             sim.run(n_iters=1)
 
@@ -442,3 +441,22 @@ class TestRun:
         for segment in sim.segments:
             assert segment.initial_state is None
             assert segment.status == segment.Status.UNSET
+
+    def test_continue_run(self, datafile, propagator):
+        sim = Simulation(
+            datafile=datafile,
+            propagator=propagator,
+        )
+        sim.initialize(State(coord=[0.0]))
+        sim.run(n_iters=2)
+        del sim
+
+        # continue run from last checkpoint in 'datafile'
+        sim2 = Simulation(
+            datafile=datafile,
+            propagator=propagator,
+        )
+        with pytest.raises(FileExistsError):
+            sim2.initialize(State(coord=[0.0]))
+        sim2.run(n_iters=2)
+        assert sim2.current_iteration == 5

@@ -76,10 +76,17 @@ class State:
     def to_numpy(self):
         fields = []
         values = []
-        if (file := self.file) is not None:
-            fields.append(('file', h5py.special_dtype(vlen=str)))
-            values.append(file)
         if (coord := self.coord) is not None:
             fields.append(('coord', coord.dtype, coord.shape))
             values.append(coord)
+        if (file := self.file) is not None:
+            fields.append(('file', h5py.special_dtype(vlen=str)))
+            values.append(file)
         return np.array(values, dtype=np.dtype(fields))
+
+    @classmethod
+    def from_numpy(cls, array):
+        return cls(
+            coord=array['coord'] if 'coord' in array.dtype.names else None,
+            file=array['file'].decode('utf-8') if 'file' in array.dtype.names else None,
+        )
