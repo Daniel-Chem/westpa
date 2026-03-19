@@ -62,7 +62,7 @@ class Propagator(abc.ABC):
 
 
 class BatchedPropagator(Propagator):
-    """Defines a method for propagating a batch of segments simultaneously."""
+    """Defines a method for propagating a batch of segments concurrently."""
 
     @abc.abstractmethod
     def propagate_batch(self, segments):
