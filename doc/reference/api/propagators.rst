@@ -16,4 +16,4 @@ To use it, OpenMM must be installed, e.g.:
     pip install "openmm[cuda12]"
 
 .. autoclass:: westpa.OpenMMPropagator
-.. autoclass:: westpa.OpenMMReport
+   :members: add_reporter
