@@ -230,7 +230,13 @@ class Segment:
 
     @property
     def pcoord(self):
-        """Progress coordinate time series."""
+        """Progress coordinate time series.
+
+        The value provided to ``pcoord.setter`` must be a 1-D or 2-D array.
+        1-D arrays (single frames) will be converted to 2-D arrays (time
+        series) of length 1.
+
+        """
         return self._pcoord
 
     @pcoord.setter
