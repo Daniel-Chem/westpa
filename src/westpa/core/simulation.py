@@ -12,7 +12,7 @@ from sortedcontainers import SortedList
 
 from .state import State
 from .segment import Segment
-from .propagators import Propagator
+from .propagators import Propagator, BatchedPropagator
 from .binning import BinMapper, NopMapper
 from .resamplers import HuberKimResampler, Resampler
 from .source_sink import Source, Sink
@@ -65,11 +65,11 @@ class Simulation:
         HDF5 file used to store simulation data. Either a pathname (e.g.,
         ``'west.h5'``) or a binary stream may be provided.
     propagator : Propagator
-        Routine for simulating the model dynamics over a fixed time interval :math:`\\tau`.
+        Routine for simulating dynamics for a fixed time interval :math:`\\tau`.
     pcoord_calculator : Callable[[Segment], Segment], optional
         Routine for computing the progress coordinate(s). It should take a
         propagated segment, set its ``pcoord`` attribute, and return the
-        modified segment. Defaults to :func:`~westpa.trivial_pcoord_calculator`,
+        modified segment. Defaults to :obj:`~westpa.trivial_pcoord_calculator`,
         which sets ``pcoord`` to ``final_state.coord``.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
@@ -93,8 +93,10 @@ class Simulation:
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator`, `pcoord_calculator`, and
         `istate_generator`. By default, calls are executed serially.
-    propagator_block_size : int, default 1
-        Number of segments to process in a given call to `propagator`.
+    propagator_block_size : int, optional
+        Number of segments to process in a given call to `propagator`. Defaults
+        to 128 if `propagator` is a :class:`~westpa.BatchedPropagator`
+        instance; otherwise defaults to 1.
     plugins : iterable of Plugin, optional
         One or more plugins to modify the simulation loop.
 
@@ -136,7 +138,7 @@ class Simulation:
         sinks=None,
         istate_generator=None,
         work_manager=None,
-        propagator_block_size=1,
+        propagator_block_size=None,
         plugins=None,
     ):
         self._propagator = None
@@ -167,7 +169,14 @@ class Simulation:
 
         self.istate_generator = istate_generator
         self.work_manager = work_manager or SerialWorkManager()
-        self.propagator_block_size = propagator_block_size
+
+        if propagator_block_size is None:
+            if isinstance(self.propagator, BatchedPropagator):
+                self.propagator_block_size = 128
+            else:
+                self.propagator_block_size = 1
+        else:
+            self.propagator_block_size = propagator_block_size
 
         for plugin in plugins or []:
             self.add_plugin(plugin)
