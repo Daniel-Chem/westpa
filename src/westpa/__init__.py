@@ -21,7 +21,7 @@ __all__ = [
     'Propagator',
     'BatchedPropagator',
     'OpenMMPropagator',
-    'OpenMMReport',
+    'Plugin',
     'WESTSystem',
     'BasisState',
     'TargetState',
@@ -54,9 +54,10 @@ from .core.resamplers import (
 )
 from .core.simulation import Simulation, trivial_pcoord_calculator
 from .core.source_sink import Source, Sink
+from .core.plugins import Plugin
 
 try:
-    from .core.propagators._openmm import OpenMMPropagator, OpenMMReport
+    from .core.propagators._openmm import OpenMMPropagator
 except ImportError:
     pass
 

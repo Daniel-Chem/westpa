@@ -15,4 +15,5 @@ analyzing weighted ensemble simulations from Python programs.
    recycling
    simulations
    work_managers
+   plugins
    analysis

@@ -6,8 +6,8 @@ class Plugin:
     ----------
     priority : int, default 0
         Relative priority of the plugin. If two plugins both implement the same
-        hook, the plugin with the lower value of `priority` (which is used as a
-        sort key) will be run first.
+        method, the plugin with the lower value of `priority` (which is used as
+        a sort key) will be run first.
 
     Attributes
     ----------
@@ -27,38 +27,38 @@ class Plugin:
     def priority(self, value):
         self._priority = int(value)
 
-    def prepare_run(self, simulation):
+    def prepare_run(self, sim):
         """Method to call at the beginning of each run."""
         pass
 
-    def finalize_run(self, simulation):
+    def finalize_run(self, sim):
         """Method to call at the end of each run."""
         pass
 
-    def prepare_iteration(self, simulation):
+    def prepare_iteration(self, sim):
         """Method to call at the beginning of each iteration."""
         pass
 
-    def finalize_iteration(self, simulation):
+    def finalize_iteration(self, sim):
         """Method to call at the end of each iteration."""
         pass
 
-    def pre_propagation(self, simulation):
+    def pre_propagation(self, sim):
         """Method to call before running dynamics."""
         pass
 
-    def post_propagation(self, simulation):
+    def post_propagation(self, sim):
         """Method to call after running dynamics."""
         pass
 
-    def pre_we(self, simulation):
+    def pre_we(self, sim):
         """Method to call before weighted ensemble resampling."""
         pass
 
-    def post_we(self, simulation):
+    def post_we(self, sim):
         """Method to call after weighted ensemble resampling."""
         pass
 
-    def prepare_new_iteration(self, simulation):
+    def prepare_new_iteration(self, sim):
         """Method to call after preparing the next iteration's segments."""
         pass

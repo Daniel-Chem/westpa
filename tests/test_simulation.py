@@ -11,7 +11,7 @@ from westpa.core.propagators import Propagator
 from westpa.core.binning import NopMapper, RectilinearBinMapper
 from westpa.core.resamplers import HuberKimResampler
 from westpa.core.source_sink import Source, Sink
-from westpa.core.plugin import Plugin
+from westpa.core.plugins import Plugin
 from westpa.work_managers import SerialWorkManager
 
 # ---------------------------------------------------------------------------

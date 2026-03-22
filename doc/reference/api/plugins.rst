@@ -1,0 +1,4 @@
+Plugins
+=======
+
+.. autoclass:: westpa.Plugin

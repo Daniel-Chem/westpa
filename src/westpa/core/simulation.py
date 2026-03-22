@@ -16,8 +16,8 @@ from .propagators import Propagator
 from .binning import BinMapper, NopMapper
 from .resamplers import HuberKimResampler, Resampler
 from .source_sink import Source, Sink
+from .plugins import Plugin
 from .sim_manager import PropagationError
-from .plugin import Plugin
 from ..work_managers import SerialWorkManager
 from ..work_managers.core import WorkManager
 from ._data_manager import DataManager
@@ -44,7 +44,7 @@ def trivial_pcoord_calculator(segment):
     Parameters
     ----------
     segment : Segment
-        Propagated segment.
+        Segment with non-null value of ``final_state.coord``.
 
     Returns
     -------
@@ -70,8 +70,7 @@ class Simulation:
         Routine for computing the progress coordinate(s). It should take a
         propagated segment, set its ``pcoord`` attribute, and return the
         modified segment. Defaults to :func:`~westpa.trivial_pcoord_calculator`,
-        which is appropriate for simple models where the progress coordinate
-        space coincides with the full state space.
+        which sets ``pcoord`` to ``final_state.coord``.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
