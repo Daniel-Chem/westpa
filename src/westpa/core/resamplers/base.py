@@ -94,7 +94,7 @@ class Resampler(abc.ABC):
             raise ValueError("'m' must be greater than or equal to 2")
 
         new_weight = segment.weight / m
-        new_segments = {segment.copy(weight=new_weight) for _ in range(m)}
+        new_segments = {segment.replace(weight=new_weight) for _ in range(m)}
 
         bin.remove(segment)
         bin |= new_segments
@@ -121,7 +121,7 @@ class Resampler(abc.ABC):
             total_weight = weights.sum()
 
         segment = self.rng.choice(segments, p=weights / total_weight)
-        new_segment = segment.copy(
+        new_segment = segment.replace(
             weight=total_weight,
             wtg_parent_ids=set.union(*(segment.wtg_parent_ids for segment in segments)),
         )

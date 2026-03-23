@@ -608,7 +608,7 @@ class Simulation:
                 for state in states:
                     logger.debug(f'using source state {state} directly')
                     segment = unprepared_segments.pop()
-                    segment = segment.copy(initial_state=state, status=Segment.Status.PREPARED)
+                    segment.initial_state = state
                     prepared_segments.append(segment)
                 self.data_manager.write_initial_states(self.current_iteration, prepared_segments)
 
@@ -629,7 +629,7 @@ class Simulation:
                 state = future.get_result()
 
                 segment = unprepared_segments.pop()
-                segment = segment.copy(initial_state=state, status=Segment.Status.PREPARED)
+                segment.initial_state = state
                 prepared_segments.append(segment)
 
                 self.segments[segment.seg_id] = segment
@@ -672,7 +672,7 @@ class Simulation:
         self._call_plugin_method(Plugin.pre_we)
 
         # Initialize the weight transfer graph.
-        segments = [s.copy(wtg_parent_ids=[s.seg_id]) for s in self.segments]
+        segments = [s.replace(wtg_parent_ids=[s.seg_id]) for s in self.segments]
 
         bins = self.bin_mapper.map(segments)
         for i, bin in enumerate(bins):

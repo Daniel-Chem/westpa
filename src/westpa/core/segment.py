@@ -415,8 +415,8 @@ class Segment:
         kwargs.update(changes)
         return type(self)(**kwargs)
 
-    def copy(self, **changes):
-        """Return a copy of the segment.
+    def replace(self, **changes):
+        """Return a modified copy of the segment.
 
         Parameters
         ----------

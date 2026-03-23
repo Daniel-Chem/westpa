@@ -38,4 +38,4 @@ class ResidualResampler(Resampler):
         wtg_parent_ids = set.union(*(segment.wtg_parent_ids for segment in bin))
         for segment, count in zip(bin, counts):
             for _ in range(count):
-                yield segment.copy(weight=new_weight, wtg_parent_ids=wtg_parent_ids)
+                yield segment.replace(weight=new_weight, wtg_parent_ids=wtg_parent_ids)
