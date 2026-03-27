@@ -98,45 +98,75 @@ class DataManager(WESTDataManager):
                 self.write_initial_states(n_iter, prepared_segments)
 
     def finalize_iteration(self, n_iter, segments):
-        n_particles = len(segments)
+        self.update_seg_index(n_iter, segments)
+        self.write_auxdata(n_iter, segments)
+
+    def update_seg_index(self, n_iter, segments):
+        """Update the ``seg_index`` dataset for a given iteration. All prior
+        information for each segment is overwritten, except for parent and
+        weight transfer information.
+
+        Parameters
+        ----------
+        n_iter : int
+            Iteration number.
+        segments : iterable of Segment
+            Set of segments belonging to iteration `n_iter`.
+
+        """
+        segments = sorted(segments, key=attrgetter('seg_id'))
+        n_segments = len(segments)
 
         with self.lock:
             iter_group = self.get_iter_group(n_iter)
+            dsid = iter_group['seg_index'].id
 
-            seg_index_table_ds = iter_group['seg_index']
-            seg_index_table = seg_index_table_ds[...]
+            entries = np.empty((n_segments,), dtype=seg_index_dtype)
 
-            for segment in segments:
-                seg_id = segment.seg_id
-                seg_index_table[seg_id]['status'] = segment.status
-                seg_index_table[seg_id]['endpoint_type'] = segment.endpoint_type
-                seg_index_table[seg_id]['cputime'] = segment.cputime
-                seg_index_table[seg_id]['walltime'] = segment.walltime
-                seg_index_table[seg_id]['weight'] = segment.weight
+            msel = h5s.create_simple(entries.shape, (h5s.UNLIMITED,))
+            msel.select_all()
+            fsel = dsid.get_space()
+            for i, segment in enumerate(segments):
+                op = h5s.SELECT_OR if i != 0 else h5s.SELECT_SET
+                fsel.select_hyperslab((segment.seg_id,), (1,), op=op)
 
-            seg_index_table_ds[:] = seg_index_table
+            dsid.read(msel, fsel, entries)
 
-            # Now, to deal with auxiliary data
-            # If any segment has any auxiliary data, then the aux dataset must spring into
-            # existence. Each is named according to the name in segment.data, and has shape
-            # (n_particles, ...) where the ... is the shape of the data in segment.data (and may be empty
-            # in the case of scalar data) and dtype is taken from the data type of the data entry
-            # compression is on by default for datasets that will be more than 1MiB
+            for segment, entry in zip(segments, entries):
+                entry['status'] = segment.status
+                entry['endpoint_type'] = segment.endpoint_type
+                entry['cputime'] = segment.cputime
+                entry['walltime'] = segment.walltime
+                entry['weight'] = segment.weight
 
-            # a mapping of data set name to (per-segment shape, data type) tuples
-            dsets = {}
+            dsid.write(msel, fsel, entries)
 
-            # First we scan for presence, shape, and data type of auxiliary data sets
-            for segment in segments:
-                if segment.data:
-                    for dsname in segment.data:
-                        if dsname.startswith('iterh5/'):
-                            continue
-                        data = np.asarray(segment.data[dsname], order='C')
-                        segment.data[dsname] = data
-                        dsets[dsname] = (data.shape, data.dtype)
+    def write_auxdata(self, n_iter, segments):
+        # Now, to deal with auxiliary data
+        # If any segment has any auxiliary data, then the aux dataset must spring into
+        # existence. Each is named according to the name in segment.data, and has shape
+        # (n_particles, ...) where the ... is the shape of the data in segment.data (and may be empty
+        # in the case of scalar data) and dtype is taken from the data type of the data entry
+        # compression is on by default for datasets that will be more than 1MiB
 
-            # Then we iterate over data sets and store data
+        # a mapping of data set name to (per-segment shape, data type) tuples
+        dsets = {}
+
+        # First we scan for presence, shape, and data type of auxiliary data sets
+        for segment in segments:
+            if segment.data:
+                for dsname in segment.data:
+                    if dsname.startswith('iterh5/'):
+                        continue
+                    data = np.asarray(segment.data[dsname], order='C')
+                    segment.data[dsname] = data
+                    dsets[dsname] = (data.shape, data.dtype)
+
+        # Then we iterate over data sets and store data
+        with self.lock:
+            iter_group = self.get_iter_group(n_iter)
+            n_particles = iter_group['seg_index'].shape[0]
+
             if dsets:
                 for dsname, (shape, dtype) in dsets.items():
                     try:
@@ -165,8 +195,6 @@ class DataManager(WESTDataManager):
                             dset.id.write(source_sel, dest_sel, auxdataset)
                     if 'delram' in list(dsopts.keys()):
                         del dsets[dsname]
-
-            self.update_iter_h5file(n_iter, segments)
 
     def write_initial_states(self, n_iter, segments):
         """Write :attr:`~westpa.Segment.initial_state` data for a set of segments.
@@ -267,17 +295,20 @@ class DataManager(WESTDataManager):
 
             dsid.write(msel, fsel, entries)
 
-    def get_segments(self, n_iter=None, seg_ids=None, load_pcoords=True):
-        segments = super().get_segments(n_iter, seg_ids, load_pcoords)
-
+    def get_segments(self, n_iter=None, seg_ids=None):
+        segments = super().get_segments(n_iter, seg_ids, load_pcoords=False)
         seg_ids = [s.seg_id for s in segments]
-        iter_group = self.get_iter_group(n_iter)
 
-        if 'initial_states' in iter_group:
-            for segment, array in zip(segments, iter_group['initial_states'][seg_ids]):
-                segment.initial_state = State.from_numpy(array)
-        if 'final_states' in iter_group:
-            for segment, array in zip(segments, iter_group['final_states'][seg_ids]):
-                segment.final_state = State.from_numpy(array)
+        with self.lock:
+            iter_group = self.get_iter_group(n_iter or self.current_iteration)
+            if 'initial_states' in iter_group:
+                for segment, row in zip(segments, iter_group['initial_states'][seg_ids]):
+                    segment.initial_state = State.from_numpy(row)
+            if 'final_states' in iter_group:
+                for segment, row in zip(segments, iter_group['final_states'][seg_ids]):
+                    segment.final_state = State.from_numpy(row)
+            if 'pcoord' in iter_group:
+                for segment, row in zip(segments, iter_group['pcoord'][seg_ids]):
+                    segment.pcoord = row
 
         return segments

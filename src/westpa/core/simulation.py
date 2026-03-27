@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 import logging
 import math
@@ -54,6 +55,17 @@ def trivial_pcoord_calculator(segment):
     """
     segment.pcoord = segment.final_state.coord
     return segment
+
+
+# decorator for methods that require initialization
+def requires_initialization(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if not self.initialized:
+            raise RuntimeError(f'simulation must be initialized before calling {func.__name__!r}')
+        return func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class Simulation:
@@ -113,7 +125,8 @@ class Simulation:
     work_manager : WorkManager
     propagator_block_size : int
     plugins : iterable of Plugin
-    current_iteration : int
+    current_iteration : int or None
+    initialized : bool
 
     Methods
     -------
@@ -181,7 +194,17 @@ class Simulation:
         for plugin in plugins or []:
             self.add_plugin(plugin)
 
-        self.segments = []
+        if os.path.exists(self.datafile):
+            logger.debug('opening existing simulation')
+            self.data_manager.open_backing()
+            self.n_iter = self.data_manager.current_iteration
+            self.segments = self.data_manager.get_segments()
+            logger.debug(f'loaded {len(self.segments)} segments')
+            self.data_manager.close_backing()
+        else:
+            self.n_iter = None
+            self.segments = None
+
         self.resampled_segments = []  # populated by _run_we()
         self.next_iter_segments = []  # populated by _prepare_new_iteration()
 
@@ -286,21 +309,12 @@ class Simulation:
     @property
     def current_iteration(self):
         """Current iteration number."""
-        if self.data_manager.we_h5file is None:
-            reclose = True
-            self.data_manager.open_backing(mode='r')
-        else:
-            reclose = False
-        n = self.data_manager.current_iteration
-        if reclose:
-            self.data_manager.close_backing()
-        return n
+        return self.n_iter
 
     @property
-    def incomplete_segments(self):
-        for segment in self.segments:
-            if segment.status != Segment.Status.COMPLETE:
-                yield segment
+    def initialized(self):
+        """Whether the simulation has been initialized."""
+        return self.n_iter is not None
 
     def initialize(
         self,
@@ -352,12 +366,14 @@ class Simulation:
 
         self.data_manager.prepare_iteration(n_iter=1, segments=self.segments)
         self.data_manager.current_iteration = 1
+        self.n_iter = 1
 
         logger.info('Simulation prepared.')
         self._report_statistics(save_summary=True)
         self.data_manager.flush_backing()
         self.data_manager.close_backing()
 
+    @requires_initialization
     def run(self, n_iters=1, max_walltime=None):
         """Run the simulation.
 
@@ -438,6 +454,58 @@ class Simulation:
             raise TypeError("'plugin' must be a Plugin object")
         self._plugins.add(plugin)
 
+    @requires_initialization
+    def get_segments(self):
+        """Return the current segment information.
+
+        Returns
+        -------
+        iterable of Segment
+            Current segments.
+
+        """
+        return self.segments
+
+    @requires_initialization
+    def update_segments(self, segments):
+        """Update the segment information for the current iteration.
+
+        Parameters
+        ----------
+        iterable of Segment
+            Modified segments.
+
+        """
+        segments = np.array(list(segments), dtype=object)
+
+        for segment in segments:
+            if segment.n_iter != self.n_iter:
+                raise ValueError(f"'n_iter' must match the current iteration ({self.n_iter})")
+            if not (0 <= segment.seg_id < len(self.segments)):
+                raise ValueError(f"unrecognized 'seg_id': {segment.seg_id}")
+
+        has_initial_state = np.zeros(len(segments), dtype=bool)
+        has_final_state = np.zeros(len(segments), dtype=bool)
+        has_pcoord = np.zeros(len(segments), dtype=bool)
+
+        for i, segment in enumerate(segments):
+            if segment.initial_state is not None:
+                has_initial_state[i] = True
+            if segment.final_state is not None:
+                has_final_state[i] = True
+            if segment.pcoord is not None:
+                has_pcoord[i] = True
+
+        self.data_manager.update_seg_index(self.n_iter, segments)
+        self.data_manager.write_auxdata(self.n_iter, segments)
+
+        self.data_manager.write_initial_states(self.n_iter, segments[has_initial_state])
+        self.data_manager.write_final_states(self.n_iter, segments[has_final_state])
+        self.data_manager.write_pcoord(self.n_iter, segments[has_pcoord])
+
+        for segment in segments:
+            self.segments[segment.seg_id] = segment
+
     def _run(self, n_iters, max_walltime):
         self._prepare_run()
 
@@ -447,19 +515,18 @@ class Simulation:
             stop_time = start_time + max_walltime
             logger.info(f'Maximum wallclock time: {timedelta(seconds=max_walltime or 0)}')
 
-        max_iter = self.current_iteration + n_iters - 1
+        max_iter = self.n_iter + n_iters - 1
 
         iter_elapsed = 0
-        while self.current_iteration <= max_iter:
-            n_iter = self.current_iteration
+        while self.n_iter <= max_iter:
             if max_walltime and time.time() + 1.1 * iter_elapsed >= stop_time:
-                logger.info(f'Iteration {n_iter} would require more than the alloted time. Ending run.')
+                logger.info(f'Iteration {self.n_iter} would require more than the alloted time. Ending run.')
                 return
             try:
                 iter_start_time = time.time()
 
                 logger.info(time.asctime())
-                logger.info(f'Iteration {n_iter} (of {max_iter})')
+                logger.info(f'Iteration {self.n_iter} (of {max_iter})')
 
                 self._prepare_iteration()
                 self._propagate()
@@ -479,10 +546,13 @@ class Simulation:
                     walltime = timedelta(seconds=walltime)
                 if not math.isnan(cputime):
                     cputime = timedelta(seconds=cputime)
+
+                logger.info('Iteration completed successfully')
                 logger.info(f'Iteration wallclock: {walltime}, cputime: {cputime}')
 
                 # Advance to the next iteration.
                 self.data_manager.current_iteration += 1
+                self.n_iter += 1
                 self.segments = copy.copy(self.next_iter_segments)
                 self.resampled_segments.clear()
                 self.next_iter_segments.clear()
@@ -541,35 +611,13 @@ class Simulation:
         self.data_manager.finalize_run()
 
     def _prepare_iteration(self):
-        logger.debug(f'beginning iteration {self.current_iteration}')
-
-        if self.segments is None:
-            self.segments = self.data_manager.get_segments()
-            logger.debug(f'loaded {len(self.segments)} segments')
-        else:
-            logger.debug(f'using {len(self.segments)} pre-existing segments')
-
-        incomplete_segments = list(self.incomplete_segments)
-
-        n_incomplete = len(incomplete_segments)
-        n_complete = len(self.segments) - n_incomplete
-
-        logger.debug(f'{n_complete} segments are complete; {n_incomplete} are incomplete')
-
-        if len(incomplete_segments) == len(self.segments):
-            logger.info(f'Beginning iteration {self.current_iteration}')
-        elif incomplete_segments:
-            logger.info(f'Continuing iteration {self.current_iteration}')
-
-        logger.info(f'{n_incomplete} segments remain in iteration {self.current_iteration} ({len(self.segments)} total)')
-
+        logger.debug(f'preparing iteration {self.n_iter}')
         self._call_plugin_method(Plugin.prepare_iteration)
 
     def _finalize_iteration(self):
-        logger.debug('finalizing iteration {:d}'.format(self.current_iteration))
-        self.data_manager.finalize_iteration(self.current_iteration, self.segments)
+        logger.debug('finalizing iteration {:d}'.format(self.n_iter))
+        self.data_manager.finalize_iteration(self.n_iter, self.segments)
         self._call_plugin_method(Plugin.finalize_iteration)
-        logger.info("Iteration completed successfully")
 
     def _propagate(self):
         self._call_plugin_method(Plugin.pre_propagation)
@@ -594,7 +642,7 @@ class Simulation:
                 futures.add(future)
 
         n_incomplete = len(unprepared_segments) + len(prepared_segments)
-        logger.debug(f'iteration {self.current_iteration}: propagating {n_incomplete} segments')
+        logger.debug(f'iteration {self.n_iter}: propagating {n_incomplete} segments')
 
         if unprepared_segments:
             states = self.source.random_choice(len(unprepared_segments), seed=self.resampler.rng)
@@ -610,7 +658,7 @@ class Simulation:
                     segment = unprepared_segments.pop()
                     segment.initial_state = state
                     prepared_segments.append(segment)
-                self.data_manager.write_initial_states(self.current_iteration, prepared_segments)
+                self.data_manager.write_initial_states(self.n_iter, prepared_segments)
 
         for segments in batched(prepared_segments, self.propagator_block_size):
             future = self.work_manager.submit(self.propagator, args=(segments,))
@@ -633,7 +681,7 @@ class Simulation:
                 prepared_segments.append(segment)
 
                 self.segments[segment.seg_id] = segment
-                self.data_manager.write_initial_states(self.current_iteration, segments=[segment])
+                self.data_manager.write_initial_states(self.n_iter, segments=[segment])
 
                 if len(prepared_segments) == self.propagator_block_size or not istate_futures:
                     future = self.work_manager.submit(self.propagator, args=(prepared_segments,))
@@ -650,7 +698,7 @@ class Simulation:
                         logger.error(f'propagation failed for segment {segment.seg_id}')
                         raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
                     self.segments[segment.seg_id] = segment
-                self.data_manager.write_final_states(self.current_iteration, segments)
+                self.data_manager.write_final_states(self.n_iter, segments)
 
                 for segment in segments:
                     future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
@@ -661,7 +709,7 @@ class Simulation:
                 pcoord_futures.remove(future)
                 segment = future.get_result()
                 self.segments[segment.seg_id] = segment
-                self.data_manager.write_pcoords(self.current_iteration, segments=[segment])
+                self.data_manager.write_pcoords(self.n_iter, segments=[segment])
 
         logger.debug('done with propagation')
 
@@ -686,11 +734,16 @@ class Simulation:
 
     def _prepare_new_iteration(self):
         recycled_segments = set()
-        for sink in self.sinks:
-            segments = {s for s in self.resampled_segments if s in sink}
+        for i, sink in enumerate(self.sinks):
+            segments = {seg for seg in self.resampled_segments if seg in sink}
+            if len(segments) == 0:
+                continue
             recycled_segments |= segments
-            p = sum(s.weight for s in segments)
-            logger.info(f'Recycled {p} probability ({len(segments)} walkers) from {sink!r}')
+
+            p = sum(seg.weight for seg in segments)
+            label = sink.label if sink.label is not None else i
+            message = f'Recycled {p} probability ({len(segments)} walkers) from sink {label!r}'
+            logger.info(message)
 
         for index, segment in enumerate(self.resampled_segments):
             parent = self.segments[segment.seg_id]
@@ -721,7 +774,7 @@ class Simulation:
             if segment.endpoint_type == Segment.EndPointType.UNSET:
                 segment.endpoint_type = Segment.EndPointType.MERGED
 
-        self.data_manager.prepare_iteration(self.current_iteration + 1, self.next_iter_segments)
+        self.data_manager.prepare_iteration(self.n_iter + 1, self.next_iter_segments)
 
         self._call_plugin_method(Plugin.prepare_new_iteration)
 
