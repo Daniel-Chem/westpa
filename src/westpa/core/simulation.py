@@ -40,19 +40,6 @@ def batched(iterable, n, *, strict=False):
 
 
 def trivial_pcoord_calculator(segment):
-    """Set a segment's ``pcoord`` to ``final_state.coord``, and return the modified segment.
-
-    Parameters
-    ----------
-    segment : Segment
-        Segment with non-null value of ``final_state.coord``.
-
-    Returns
-    -------
-    Segment
-        Modified segment, with ``pcoord`` set to ``final_state.coord``.
-
-    """
     segment.pcoord = segment.final_state.coord
     return segment
 
@@ -77,19 +64,20 @@ class Simulation:
         HDF5 file used to store simulation data. Either a pathname (e.g.,
         ``'west.h5'``) or a binary stream may be provided.
     propagator : Propagator
-        Routine for simulating dynamics for a fixed time interval :math:`\\tau`.
+        Routine for propagating trajectories forward in time.
     pcoord_calculator : Callable[[Segment], Segment], optional
-        Routine for computing the progress coordinate(s). It should take a
-        propagated segment, set its ``pcoord`` attribute, and return the
-        modified segment. Defaults to :obj:`~westpa.trivial_pcoord_calculator`,
-        which sets ``pcoord`` to ``final_state.coord``.
+        Routine for computing the progress coordinate(s) of a trajectory
+        segment. It should take a propagated segment, set its
+        :attr:`~westpa.Segment.pcoord` attribute, and return the modified
+        segment. If not provided, ``pcoord`` will be set to
+        ``final_state.coord``.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
     bin_target_counts : int or sequence of int, default 1
-        Target number of trajectories (allocation) for each bin. If passed an
-        integer, the value will be applied to all the bins. If passed a
-        sequence, its length must match ``bin_mapper.nbins``.
+        Target number of trajectories (allocation) for each bin. If an integer
+        is provided, the value will be applied to all the bins. If a sequence
+        is provided, its length must match ``bin_mapper.nbins``.
     resampler : Resampler, optional
         Routine for resampling the trajectories in each bin. Defaults to
         ``HuberKimResampler()``.
@@ -105,12 +93,12 @@ class Simulation:
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator`, `pcoord_calculator`, and
         `istate_generator`. By default, calls are executed serially.
+    plugins : iterable of Plugin, optional
+        One or more plugins to modify the simulation loop.
     propagator_block_size : int, optional
         Number of segments to process in a given call to `propagator`. Defaults
         to 128 if `propagator` is a :class:`~westpa.BatchedPropagator`
         instance; otherwise defaults to 1.
-    plugins : iterable of Plugin, optional
-        One or more plugins to modify the simulation loop.
 
     Attributes
     ----------
@@ -128,14 +116,6 @@ class Simulation:
     current_iteration : int or None
     initialized : bool
 
-    Methods
-    -------
-    initialize
-    run
-    update_bins
-    update_source_and_sinks
-    add_plugin
-
     """
 
     def __init__(
@@ -151,8 +131,8 @@ class Simulation:
         sinks=None,
         istate_generator=None,
         work_manager=None,
-        propagator_block_size=None,
         plugins=None,
+        propagator_block_size=None,
     ):
         self._propagator = None
         self._pcoord_calculator = None
@@ -163,8 +143,8 @@ class Simulation:
         self._sinks = ()
         self._istate_generator = None
         self._work_manager = None
-        self._propagator_block_size = None
         self._plugins = SortedList(key=operator.attrgetter('priority'))
+        self._propagator_block_size = None
 
         self.data_manager = DataManager(datafile)
 
@@ -183,6 +163,9 @@ class Simulation:
         self.istate_generator = istate_generator
         self.work_manager = work_manager or SerialWorkManager()
 
+        for plugin in plugins or []:
+            self.add_plugin(plugin)
+
         if propagator_block_size is None:
             if isinstance(self.propagator, BatchedPropagator):
                 self.propagator_block_size = 128
@@ -190,9 +173,6 @@ class Simulation:
                 self.propagator_block_size = 1
         else:
             self.propagator_block_size = propagator_block_size
-
-        for plugin in plugins or []:
-            self.add_plugin(plugin)
 
         if os.path.exists(self.datafile):
             logger.debug('opening existing simulation')
@@ -468,7 +448,7 @@ class Simulation:
 
     @requires_initialization
     def update_segments(self, segments):
-        """Update the segment information for the current iteration.
+        """Update the current segment information.
 
         Parameters
         ----------
@@ -507,7 +487,7 @@ class Simulation:
             self.segments[segment.seg_id] = segment
 
     def _run(self, n_iters, max_walltime):
-        self._prepare_run()
+        self.prepare_run()
 
         start_time = time.time()
         stop_time = None
@@ -559,7 +539,7 @@ class Simulation:
             finally:
                 self.data_manager.flush_backing()
 
-        self._finalize_run()
+        self.finalize_run()
 
         logger.info(time.asctime())
         logger.info('WESTPA run complete.')
@@ -602,11 +582,13 @@ class Simulation:
                 iter_summary['walltime'] = 0.0
             self.data_manager.update_iter_summary(iter_summary)
 
-    def _prepare_run(self):
+    def prepare_run(self):
+        """Open a stream to :attr:`datafile`."""
         self.data_manager.prepare_run()
         self._call_plugin_method(Plugin.prepare_run)
 
-    def _finalize_run(self):
+    def finalize_run(self):
+        """Flush and close the stream to :attr:`datafile`."""
         self._call_plugin_method(Plugin.finalize_run)
         self.data_manager.finalize_run()
 
