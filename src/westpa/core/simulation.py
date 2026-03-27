@@ -298,14 +298,14 @@ class Simulation:
 
     def initialize(
         self,
-        initial_states,
+        states,
         weights=None,
     ):
         """Initialize the simulation.
 
         Parameters
         ----------
-        initial_states : State or iterable of State
+        states : State or iterable of State
             States from which to initiate trajectories (one per trajectory).
         weights : 1-D array-like, optional
             Weight to assign each trajectory. Defaults to a uniform distribution.
@@ -318,16 +318,16 @@ class Simulation:
         self.data_manager.prepare_backing()
         logger.info(f'Created HDF5 file {self.datafile!r}')
 
-        if isinstance(initial_states, State):
-            initial_states = [initial_states]
+        if isinstance(states, State):
+            states = [states]
         else:
-            initial_states = list(initial_states)
+            states = list(states)
 
         if weights is None:
-            weights = np.ones(len(initial_states))
+            weights = np.ones(len(states))
         else:
             weights = np.array(weights, dtype=float)
-            if len(weights) != len(initial_states):
+            if len(weights) != len(states):
                 raise ValueError("length of 'weights' must match number of initial states")
         weights /= weights.sum()
 
@@ -341,7 +341,7 @@ class Simulation:
                 initial_state=state,
                 status=Segment.Status.PREPARED,
             )
-            for index, (state, weight) in enumerate(zip(initial_states, weights))
+            for index, (state, weight) in enumerate(zip(states, weights))
         ]
 
         self.data_manager.prepare_iteration(n_iter=1, segments=self.segments)
@@ -447,16 +447,16 @@ class Simulation:
         return self.segments
 
     @requires_initialization
-    def update_segments(self, segments):
+    def update_segments(self, *segments):
         """Update the current segment information.
 
         Parameters
         ----------
-        iterable of Segment
+        segments : tuple of Segment
             Modified segments.
 
         """
-        segments = np.array(list(segments), dtype=object)
+        segments = np.array(segments, dtype=object)
 
         for segment in segments:
             if segment.n_iter != self.n_iter:
@@ -588,7 +588,7 @@ class Simulation:
         self._call_plugin_method(Plugin.prepare_run)
 
     def finalize_run(self):
-        """Flush and close the stream to :attr:`datafile`."""
+        """Close the stream to :attr:`datafile`."""
         self._call_plugin_method(Plugin.finalize_run)
         self.data_manager.finalize_run()
 
