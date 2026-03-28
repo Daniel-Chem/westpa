@@ -13,7 +13,7 @@ from sortedcontainers import SortedList
 
 from .state import State
 from .segment import Segment
-from .propagators import Propagator, BatchedPropagator
+from .propagators import Propagator
 from .binning import BinMapper, NopMapper
 from .resamplers import HuberKimResampler, Resampler
 from .source_sink import Source, Sink
@@ -59,8 +59,11 @@ class Simulation:
         HDF5 file used to store simulation data. Either a pathname or a binary
         stream may be provided.
     propagator : Propagator, optional
-        Routine for propagating trajectories forward in time. Required if
-        running the simulation using the :meth:`run` method.
+        Routine for propagating trajectories forward in time. Required when
+        using the :meth:`run` method to run the simulation. If `propagator` is
+        None, the simulation may be run in "WE-only" mode using the
+        :meth:`get_segments`, :meth:`update_segments`, and
+        :meth:`next_iteration` methods.
     pcoord_calculator : Callable[[Segment], Segment], optional
         Routine for computing the progress coordinate(s) of a trajectory
         segment. It should take a propagated segment, set its
@@ -91,16 +94,12 @@ class Simulation:
         Work manager for executing calls to `propagator`, `pcoord_calculator`, and
         `istate_generator`. By default, calls are executed serially.
     plugins : iterable of Plugin, optional
-        One or more plugins to modify the simulation loop.
-    propagator_block_size : int, optional
-        Number of segments to process in a given call to `propagator`. Defaults
-        to 128 if `propagator` is a :class:`~westpa.BatchedPropagator`
-        instance; otherwise defaults to 1.
+        Plugins to execute at specific points (hooks) in the simulation loop.
 
     Attributes
     ----------
     datafile : str
-    propagator : Propagator
+    propagator : Propagator or None
     pcoord_calculator : callable or None
     bin_mapper : BinMapper
     bin_target_counts : numpy.ndarray
@@ -108,7 +107,6 @@ class Simulation:
     source : Source or None
     sinks : tuple of Sink
     work_manager : WorkManager
-    propagator_block_size : int
     plugins : iterable of Plugin
     current_iteration : int or None
     initialized : bool
@@ -129,7 +127,6 @@ class Simulation:
         istate_generator=None,
         work_manager=None,
         plugins=None,
-        propagator_block_size=None,
     ):
         self._propagator = None
         self._pcoord_calculator = None
@@ -141,7 +138,6 @@ class Simulation:
         self._istate_generator = None
         self._work_manager = None
         self._plugins = SortedList(key=operator.attrgetter('priority'))
-        self._propagator_block_size = None
 
         self.data_manager = DataManager(datafile)
 
@@ -149,27 +145,12 @@ class Simulation:
         self.pcoord_calculator = pcoord_calculator
         self.update_bins(bin_mapper or NopMapper(), bin_target_counts)
         self.resampler = resampler or HuberKimResampler()
-
-        if source is not None or sinks is not None:
-            if source is None or sinks is None:
-                raise ValueError("'source' and 'sinks' must be provided together")
-            if isinstance(sinks, Sink):
-                sinks = [sinks]
-            self.update_source_and_sinks(source, sinks)
-
+        self.update_source_and_sinks(source, sinks)
         self.istate_generator = istate_generator
         self.work_manager = work_manager or SerialWorkManager()
 
         for plugin in plugins or []:
             self.add_plugin(plugin)
-
-        if propagator_block_size is None:
-            if isinstance(self.propagator, BatchedPropagator):
-                self.propagator_block_size = 128
-            else:
-                self.propagator_block_size = 1
-        else:
-            self.propagator_block_size = propagator_block_size
 
         if os.path.exists(self.datafile):
             logger.debug('opening existing simulation')
@@ -197,8 +178,8 @@ class Simulation:
 
     @propagator.setter
     def propagator(self, value):
-        if not isinstance(value, Propagator):
-            raise TypeError("'propagator' must be a Propagator object")
+        if value is not None and not isinstance(value, Propagator):
+            raise TypeError("'propagator' must be a Propagator object or None")
         self._propagator = value
 
     @property
@@ -219,7 +200,7 @@ class Simulation:
 
     @property
     def bin_target_counts(self):
-        """Target number of trajectories for each bin."""
+        """Bin allocations."""
         return self._bin_target_counts
 
     @property
@@ -264,19 +245,6 @@ class Simulation:
         if not isinstance(value, WorkManager):
             raise TypeError("'work_manager' must be a WorkManager object")
         self._work_manager = value
-
-    @property
-    def propagator_block_size(self):
-        """Batch size for propagation tasks."""
-        return self._propagator_block_size
-
-    @propagator_block_size.setter
-    def propagator_block_size(self, value):
-        if not isinstance(value, int):
-            raise TypeError("'propagator_block_size' must be an integer")
-        elif value < 1:
-            raise ValueError("'propagator_block_size' must be at least 1")
-        self._propagator_block_size = value
 
     @property
     def plugins(self):
@@ -364,6 +332,9 @@ class Simulation:
             iteration would cause the runtime to exceed `max_walltime`.
 
         """
+        if self.propagator is None:
+            raise RuntimeError("'propagator' is required when using the run() method")
+
         with self.work_manager as work_manager:
             if work_manager.is_master:
                 work_manager.install_sigint_handler()
@@ -372,16 +343,15 @@ class Simulation:
                 work_manager.run()
 
     def update_bins(self, mapper, target_counts):
-        """Update the bin mapper and target counts.
+        """Update the bin mapper and allocations.
 
         Parameters
         ----------
         mapper : BinMapper
             Routine for grouping trajectory segments into bins.
         target_counts : int or sequence of int
-            Target number of trajectories for each bin. If passed an integer,
-            the value will be applied to all the bins. If passed a sequence,
-            its length must match ``bin_mapper.nbins``.
+            Target number of trajectories for each bin. If a sequence is
+            provided, its length must match ``bin_mapper.nbins``.
 
         """
         if not isinstance(mapper, BinMapper):
@@ -404,17 +374,28 @@ class Simulation:
 
         Parameters
         ----------
-        source : Source
+        source : Source or None
             Source distribution.
-        sinks : iterable of Sink
+        sinks : Sink, iterable of Sink, or None
             Sink (target) regions.
 
         """
+        if not (source or sinks):
+            self._source = None
+            self._sinks = ()
+            return
+
+        if not (source and sinks):
+            raise ValueError("'source' and 'sinks' must be provided together")
         if not isinstance(source, Source):
             raise TypeError("'source' must be a Source object")
-        sinks = tuple(sinks)
-        if not all(isinstance(item, Sink) for item in sinks):
-            raise TypeError("items in 'sinks' must be Sink objects")
+        if isinstance(sinks, Sink):
+            sinks = (sinks,)
+        else:
+            sinks = tuple(sinks)
+            if not all(isinstance(item, Sink) for item in sinks):
+                raise TypeError("'sinks' must be a Sink object or an iterable of Sink objects")
+
         self._source = source
         self._sinks = sinks
 
@@ -639,7 +620,7 @@ class Simulation:
                     prepared_segments.append(segment)
                 self.data_manager.write_initial_states(self.n_iter, prepared_segments)
 
-        for segments in batched(prepared_segments, self.propagator_block_size):
+        for segments in batched(prepared_segments, self.propagator.block_size):
             future = self.work_manager.submit(self.propagator, args=(segments,))
             propagator_futures.add(future)
             futures.add(future)
@@ -662,7 +643,7 @@ class Simulation:
                 self.segments[segment.seg_id] = segment
                 self.data_manager.write_initial_states(self.n_iter, segments=[segment])
 
-                if len(prepared_segments) == self.propagator_block_size or not istate_futures:
+                if len(prepared_segments) == self.propagator.block_size or not istate_futures:
                     future = self.work_manager.submit(self.propagator, args=(prepared_segments,))
                     propagator_futures.add(future)
                     futures.add(future)

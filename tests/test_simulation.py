@@ -98,18 +98,15 @@ class TestSimulationConstructor:
     def test_default_istate_generator_is_none(self, sim):
         assert sim.istate_generator is None
 
-    def test_default_propagator_block_size(self, sim):
-        assert sim.propagator_block_size == 1
-
     def test_invalid_propagator_type(self, datafile):
-        with pytest.raises(TypeError, match="'propagator' must be a Propagator"):
+        with pytest.raises(TypeError, match="'propagator' must be a Propagator object or None"):
             Simulation(
                 datafile=datafile,
                 propagator="not_a_propagator",
             )
 
     def test_invalid_pcoord_calculator_not_callable(self, datafile, propagator):
-        with pytest.raises(TypeError, match="'pcoord_calculator' must be callable"):
+        with pytest.raises(TypeError, match="'pcoord_calculator' must be callable or None"):
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
@@ -117,7 +114,7 @@ class TestSimulationConstructor:
             )
 
     def test_invalid_resampler_type(self, datafile, propagator):
-        with pytest.raises(TypeError, match="'resampler' must be a Resampler"):
+        with pytest.raises(TypeError, match="'resampler' must be a Resampler object"):
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
@@ -125,27 +122,11 @@ class TestSimulationConstructor:
             )
 
     def test_invalid_work_manager_type(self, datafile, propagator):
-        with pytest.raises(TypeError, match="'work_manager' must be a WorkManager"):
+        with pytest.raises(TypeError, match="'work_manager' must be a WorkManager object"):
             Simulation(
                 datafile=datafile,
                 propagator=propagator,
                 work_manager="not_a_work_manager",
-            )
-
-    def test_invalid_propagator_block_size_type(self, datafile, propagator):
-        with pytest.raises(TypeError, match="'propagator_block_size' must be an integer"):
-            Simulation(
-                datafile=datafile,
-                propagator=propagator,
-                propagator_block_size=1.5,
-            )
-
-    def test_invalid_propagator_block_size_value(self, datafile, propagator):
-        with pytest.raises(ValueError, match="'propagator_block_size' must be at least 1"):
-            Simulation(
-                datafile=datafile,
-                propagator=propagator,
-                propagator_block_size=0,
             )
 
     def test_source_without_sink_raises(self, datafile, propagator):
@@ -266,7 +247,7 @@ class TestUpdateSourceAndSinks:
 
     def test_invalid_sink_type(self, sim):
         source = Source(State(coord=[0.0]))
-        with pytest.raises(TypeError, match="items in 'sinks' must be Sink objects"):
+        with pytest.raises(TypeError, match="'sinks' must be a Sink object or an iterable of Sink objects"):
             sim.update_source_and_sinks(source, ["not_a_sink"])
 
 

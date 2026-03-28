@@ -18,7 +18,6 @@ __all__ = [
     'Source',
     'Sink',
     'Propagator',
-    'BatchedPropagator',
     'OpenMMPropagator',
     'Plugin',
     'WESTSystem',
@@ -33,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 from .core.state import State
 from .core.segment import Segment
-from .core.propagators import Propagator, BatchedPropagator
+from .core.propagators import Propagator
 from .core.binning import (
     Bin,
     BinMapper,

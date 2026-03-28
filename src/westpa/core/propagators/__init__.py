@@ -1,9 +1,8 @@
 __all__ = [
     "Propagator",
-    "BatchedPropagator",
 ]
 
-from .base import Propagator, BatchedPropagator
+from .base import Propagator
 
 
 class WESTPropagator:

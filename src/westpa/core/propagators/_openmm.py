@@ -54,8 +54,8 @@ class OpenMMPropagator(Propagator):
         relative to the current working directory.
     final_state_filename : str, default 'final_state.xml'
         Name of the XML file used to store the final state of a segment.
-    seed : int, optional
-        Random seed. Must be non-negative.
+    seed, block_size
+        See :class:`~westpa.Propagator` class documentation for details.
 
     Examples
     --------
@@ -102,6 +102,7 @@ class OpenMMPropagator(Propagator):
         segment_dir_template=DEFAULT_SEGMENT_DIR_TEMPLATE,
         final_state_filename=DEFAULT_FINAL_STATE_FILENAME,
         seed=None,
+        block_size=None,
     ):
         super().__init__(seed=seed)
         self.topology = topology
