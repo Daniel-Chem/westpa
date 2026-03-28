@@ -39,11 +39,6 @@ def batched(iterable, n, *, strict=False):
         yield batch
 
 
-def trivial_pcoord_calculator(segment):
-    segment.pcoord = segment.final_state.coord
-    return segment
-
-
 # decorator for methods that require initialization
 def requires_initialization(func):
     @functools.wraps(func)
@@ -60,17 +55,19 @@ class Simulation:
 
     Parameters
     ----------
-    datafile : str or BufferedIOBase
-        HDF5 file used to store simulation data. Either a pathname (e.g.,
-        ``'west.h5'``) or a binary stream may be provided.
-    propagator : Propagator
-        Routine for propagating trajectories forward in time.
+    datafile : str or BufferedIOBase, default 'west.h5'
+        HDF5 file used to store simulation data. Either a pathname or a binary
+        stream may be provided.
+    propagator : Propagator, optional
+        Routine for propagating trajectories forward in time. Required if
+        running the simulation using the :meth:`run` method.
     pcoord_calculator : Callable[[Segment], Segment], optional
         Routine for computing the progress coordinate(s) of a trajectory
         segment. It should take a propagated segment, set its
         :attr:`~westpa.Segment.pcoord` attribute, and return the modified
-        segment. If not provided, ``pcoord`` will be set to
-        ``final_state.coord``.
+        segment. By default, ``pcoord`` is set to ``final_state.coord``. The
+        default is appropriate for low-dimensional (e.g., 1-D or 2-D) models
+        where the progress coordinate space coincides with the full state space.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
@@ -82,10 +79,10 @@ class Simulation:
         Routine for resampling the trajectories in each bin. Defaults to
         ``HuberKimResampler()``.
     source : Source, optional
-        Distribution according to which to re-initiate (recycle) walkers that
-        reach a sink. Must be provided together with `sinks`.
+        Distribution according to which to reinitiate (recycle) trajectories
+        that reach a sink. Must be provided together with `sinks`.
     sinks : Sink or iterable of Sink, optional
-        One or more sink (target) regions. Must be provided together with `source`.
+        Sink (target) regions. Must be provided together with `source`.
     istate_generator : Callable[[State], State], optional
         Routine for modifying the source distribution on the fly (e.g., by
         randomizing one or more degrees of freedom). It should take a state
@@ -104,7 +101,7 @@ class Simulation:
     ----------
     datafile : str
     propagator : Propagator
-    pcoord_calculator : callable
+    pcoord_calculator : callable or None
     bin_mapper : BinMapper
     bin_target_counts : numpy.ndarray
     resampler : Resampler
@@ -121,8 +118,8 @@ class Simulation:
     def __init__(
         self,
         *,
-        datafile,
-        propagator,
+        datafile='west.h5',
+        propagator=None,
         pcoord_calculator=None,
         bin_mapper=None,
         bin_target_counts=1,
@@ -149,7 +146,7 @@ class Simulation:
         self.data_manager = DataManager(datafile)
 
         self.propagator = propagator
-        self.pcoord_calculator = pcoord_calculator or trivial_pcoord_calculator
+        self.pcoord_calculator = pcoord_calculator
         self.update_bins(bin_mapper or NopMapper(), bin_target_counts)
         self.resampler = resampler or HuberKimResampler()
 
@@ -179,7 +176,7 @@ class Simulation:
             self.data_manager.open_backing()
             self.n_iter = self.data_manager.current_iteration
             self.segments = self.data_manager.get_segments()
-            logger.debug(f'loaded {len(self.segments)} segments')
+            logger.debug(f'iteration {self.n_iter}; loaded {len(self.segments)} segments')
             self.data_manager.close_backing()
         else:
             self.n_iter = None
@@ -211,8 +208,8 @@ class Simulation:
 
     @pcoord_calculator.setter
     def pcoord_calculator(self, value):
-        if not callable(value):
-            raise TypeError("'pcoord_calculator' must be callable")
+        if value is not None and not callable(value):
+            raise TypeError("'pcoord_calculator' must be callable or None")
         self._pcoord_calculator = value
 
     @property
@@ -682,10 +679,15 @@ class Simulation:
                     self.segments[segment.seg_id] = segment
                 self.data_manager.write_final_states(self.n_iter, segments)
 
-                for segment in segments:
-                    future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
-                    pcoord_futures.add(future)
-                    futures.add(future)
+                if self.pcoord_calculator is not None:
+                    for segment in segments:
+                        future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
+                        pcoord_futures.add(future)
+                        futures.add(future)
+                else:  # default: pcoord = final_state.coord
+                    for segment in segments:
+                        segment.pcoord = segment.final_state.coord
+                    self.data_manager.write_pcoords(self.n_iter, segments)
 
             elif future in pcoord_futures:
                 pcoord_futures.remove(future)

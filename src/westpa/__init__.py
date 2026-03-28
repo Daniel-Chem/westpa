@@ -15,7 +15,6 @@ __all__ = [
     'VectorizingFuncBinMapper',
     'VoronoiBinMapper',
     'Simulation',
-    'trivial_pcoord_calculator',
     'Source',
     'Sink',
     'Propagator',
@@ -52,7 +51,7 @@ from .core.resamplers import (
     MultinomialResampler,
     ResidualResampler,
 )
-from .core.simulation import Simulation, trivial_pcoord_calculator
+from .core.simulation import Simulation
 from .core.source_sink import Source, Sink
 from .core.plugins import Plugin
 
