@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 class Propagator:
-    """Base class for propagators. Subclasses must implement either the
+    """Base class for propagators. Subclasses must override either the
     :meth:`propagate` method or the :meth:`propagate_block` method.
 
     Parameters
@@ -14,7 +14,7 @@ class Propagator:
         Random seed. Must be non-negative. Defaults to ``secrets.randbits(128)``.
     block_size : int, optional
         Block size (in number of segments) for propagation tasks.
-        Defaults to 128 if :meth:`propagate_block` is implemented;
+        Defaults to 128 if :meth:`propagate_block` is overridden;
         otherwise defaults to 1.
 
     Attributes
@@ -29,9 +29,12 @@ class Propagator:
         a = cls.propagate is not Propagator.propagate
         b = cls.propagate_block is not Propagator.propagate_block
         if a == b:
-            raise TypeError("Propagator subclasses must implement either 'propagate' or 'propagate_block'")
+            raise TypeError("subclasses of Propagator must override either 'propagate' or 'propagate_block'")
 
     def __init__(self, *, seed=None, block_size=None):
+        if type(self) is Propagator:
+            raise TypeError("Propagator can't be instantiated directly")
+
         if seed is None:
             seed = secrets.randbits(128)
         else:
