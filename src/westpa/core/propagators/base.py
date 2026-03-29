@@ -24,11 +24,6 @@ class Propagator:
 
     """
 
-    def __new__(cls, *args, **kwargs):
-        if cls is Propagator:
-            raise TypeError('Propagator cannot be instantiated directly')
-        return super().__new__(cls)
-
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         a = cls.propagate is not Propagator.propagate
@@ -88,7 +83,7 @@ class Propagator:
         return self.propagate_block([segment])
 
     def propagate_block(self, segments):
-        """Propagate multiple segments concurrently.
+        """Propagate a block of segments.
 
         Parameters
         ----------

@@ -104,7 +104,7 @@ class OpenMMPropagator(Propagator):
         seed=None,
         block_size=None,
     ):
-        super().__init__(seed=seed)
+        super().__init__(seed=seed, block_size=block_size)
         self.topology = topology
         self.system = system
         self.integrator = integrator
