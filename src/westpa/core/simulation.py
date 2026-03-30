@@ -69,8 +69,8 @@ class Simulation:
         segment. It should take a propagated segment, set its
         :attr:`~westpa.Segment.pcoord` attribute, and return the modified
         segment. By default, ``pcoord`` is set to ``final_state.coord``. The
-        default is appropriate for low-dimensional (e.g., 1-D or 2-D) models
-        where the progress coordinate space coincides with the full state space.
+        default is appropriate for low-dimensional (e.g., 1-D) models where the
+        progress coordinate space coincides with the full state space.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
