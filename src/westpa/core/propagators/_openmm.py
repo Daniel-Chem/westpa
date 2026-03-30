@@ -28,8 +28,8 @@ class Report:
 class OpenMMPropagator(Propagator):
     """Molecular dynamics propagator built on the `OpenMM <https://openmm.org/>`_ toolkit.
 
-    When using this propagator, states must be specified by providing the
-    absolute path to an XML file containing a serialized OpenMM State object::
+    This propagator assumes that states are specified by providing the absolute
+    path to an XML file containing a serialized OpenMM State object, e.g.::
 
         state = westpa.State(file='/path/to/state.xml')
 
@@ -122,7 +122,7 @@ class OpenMMPropagator(Propagator):
         ----------
         reporter_type : type
             Class compatible with the OpenMM Reporter protocol. It must be possible
-            to create an instance by passing ``(filename, report_interval, **options)``
+            to create an instance by passing ``filename, report_interval, **options``
             to the `reporter_type` constructor.
         filename : str
             Name of the file to write output to.

@@ -311,7 +311,7 @@ class Segment:
 
     @property
     def initpoint_type(self):
-        """Whether the segment begins a new trajectory or continues an existing one."""
+        """Integer constant indicating the segment's origin."""
         if self.parent_id is None:
             return Segment.InitPointType.UNSET
         elif self.parent_id < 0:
@@ -321,8 +321,7 @@ class Segment:
 
     @property
     def endpoint_type(self):
-        """Whether the segment survived to the next iteration, was merged away during
-        resampling, or was recycled because it reached a sink (target) region."""
+        """Integer constant indicating the segment's fate."""
         return self._endpoint_type
 
     @endpoint_type.setter
@@ -331,7 +330,7 @@ class Segment:
 
     @property
     def status(self):
-        """Propagation status."""
+        """Integer constant indicating the segment's propagation status."""
         return self._status
 
     @status.setter

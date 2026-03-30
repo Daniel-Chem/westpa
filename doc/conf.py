@@ -62,10 +62,10 @@ autosummary_generate = True
 autoclass_content = "both"
 autodoc_member_order = "bysource"
 autodoc_default_options = {
-    "members": True,
-    "undoc-members": True,
-    "show-inheritence": True,
-    "imported-members": True,
+#     "members": True,
+#     "undoc-members": True,
+#     "show-inheritance": True,
+#     "imported-members": True,
 }
 
 # Add any paths that contain templates here, relative to this directory.
