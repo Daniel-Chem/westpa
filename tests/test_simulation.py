@@ -285,23 +285,23 @@ class TestInitialize:
     def test_initialize_single_state(self, sim, tmp_path):
         sim.initialize(State(coord=[0.5]))
         assert (tmp_path / "west.h5").exists()
-        assert len(sim.segments) == 1
+        assert len(sim.get_segments()) == 1
 
     def test_initialize_multiple_states(self, sim):
         states = [State(coord=[float(i)]) for i in range(4)]
         sim.initialize(states)
-        assert len(sim.segments) == 4
+        assert len(sim.get_segments()) == 4
 
     def test_initialize_uniform_weights(self, sim):
         states = [State(coord=[float(i)]) for i in range(4)]
         sim.initialize(states)
-        weights = [seg.weight for seg in sim.segments]
+        weights = [seg.weight for seg in sim.get_segments()]
         assert all(pytest.approx(w) == 0.25 for w in weights)
 
     def test_initialize_custom_weights_normalized(self, sim):
         states = [State(coord=[float(i)]) for i in range(3)]
         sim.initialize(states, weights=[1, 2, 1])
-        weights = [seg.weight for seg in sim.segments]
+        weights = [seg.weight for seg in sim.get_segments()]
         assert pytest.approx(sum(weights)) == 1.0
         # The segment with weight=2 gets 2/4 = 0.5
         assert pytest.approx(max(weights)) == 0.5
@@ -320,23 +320,19 @@ class TestInitialize:
     def test_initialize_segments_are_prepared(self, sim):
         states = [State(coord=[float(i)]) for i in range(2)]
         sim.initialize(states)
-        for seg in sim.segments:
+        for seg in sim.get_segments():
             assert seg.status == Segment.Status.PREPARED
 
     def test_initialize_segment_initial_states_match(self, sim):
         states = [State(coord=[0.0]), State(coord=[1.0])]
         sim.initialize(states)
-        init_coords = {tuple(seg.initial_state.coord) for seg in sim.segments}
+        init_coords = {tuple(seg.initial_state.coord) for seg in sim.get_segments()}
         assert (0.0,) in init_coords
         assert (1.0,) in init_coords
 
     def test_initialize_sets_iteration_to_one(self, sim):
         sim.initialize(State(coord=[0.5]))
-        # current_iteration is HDF5-backed; file is still open right after initialize
-        # (close_backing is called, but we can reopen)
-        sim.data_manager.open_backing(mode='r')
         assert sim.current_iteration == 1
-        sim.data_manager.close_backing()
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +344,7 @@ class TestRun:
     def test_run_one_iteration(self, sim):
         sim.initialize(State(coord=[0.0]))
         sim.run(n_iters=1)
-        assert len(sim.segments) == 1  # NopMapper with target_count=1
+        assert len(sim.get_segments()) == 1  # NopMapper with target_count=1
 
     def test_run_multiple_iterations(self, sim):
         sim.initialize(State(coord=[0.0]))
@@ -359,7 +355,7 @@ class TestRun:
         states = [State(coord=[float(i) * 0.1]) for i in range(4)]
         sim.initialize(states)
         sim.run(n_iters=2)
-        total_weight = sum(seg.weight for seg in sim.segments)
+        total_weight = sum(seg.weight for seg in sim.get_segments())
         assert pytest.approx(total_weight) == 1.0
 
     def test_run_with_rectilinear_bin_mapper(self, datafile, propagator):
@@ -416,10 +412,10 @@ class TestRun:
         sim.initialize(states)
 
         sim.run(n_iters=2)
-        total_weight = sum(seg.weight for seg in sim.segments)
+        total_weight = sum(seg.weight for seg in sim.get_segments())
         assert pytest.approx(total_weight) == 1.0
 
-        for segment in sim.segments:
+        for segment in sim.get_segments():
             assert segment.initial_state is None
             assert segment.status == segment.Status.UNSET
 
