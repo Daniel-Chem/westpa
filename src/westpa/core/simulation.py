@@ -6,6 +6,7 @@ import math
 import operator
 import os
 import time
+from collections import defaultdict
 from datetime import timedelta
 
 import numpy as np
@@ -463,8 +464,11 @@ class Simulation:
             self._segments[segment.seg_id] = segment
 
     def next_iteration(self):
-        """Advance the simulation to the next iteration. This method performs
-        binning, resampling, and recycling.
+        """Resample the current segments and advance to the next iteration.
+
+        In addition to resampling, this method is responsible for recycling any
+        trajectories that have reached a sink. In contrast to earlier versions
+        of WESTPA (``<= 2022``), recycling is carried out *after* resampling.
 
         """
         self._run_we()
@@ -503,8 +507,8 @@ class Simulation:
                 self._prepare_iteration()
                 self._propagate()
 
-                cputime = sum(segment.cputime for segment in self._segments)
                 iter_summary = self._data_manager.get_iter_summary()
+                cputime = sum(segment.cputime for segment in self._segments)
                 iter_summary['cputime'] = cputime
 
                 self.next_iteration()
@@ -586,58 +590,68 @@ class Simulation:
         self._data_manager.finalize_iteration(self._n_iter, self._segments)
         self._call_plugin_method(Plugin.finalize_iteration)
 
+    def _calculate_pcoords(self, segments):
+        futures = set()
+        if self.pcoord_calculator is not None:
+            for segment in segments:
+                future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
+                futures.add(future)
+        else:  # default: pcoord = final_state.coord
+            for segment in segments:
+                segment.pcoord = segment.final_state.coord
+            self._data_manager.write_pcoords(self._n_iter, segments)
+        return futures
+
     def _propagate(self):
         self._call_plugin_method(Plugin.pre_propagation)
 
-        futures = set()
-        istate_futures = set()
-        propagator_futures = set()
-        pcoord_futures = set()
-
-        unprepared_segments = []
-        prepared_segments = []
-
+        segment_map = defaultdict(list)  # keys: Segment.Status enum members
         for segment in self._segments:
-            if segment.initial_state is None:
-                unprepared_segments.append(segment)
-            elif segment.final_state is None:
-                prepared_segments.append(segment)
-            elif segment.pcoord is None:
-                # Immediately dispatch pending pcoord calculation tasks
-                future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
-                pcoord_futures.add(future)
-                futures.add(future)
+            segment_map[segment.status].append(segment)
+
+        unprepared_segments = segment_map[Segment.Status.UNSET]
+        prepared_segments = segment_map[Segment.Status.PREPARED]
+        complete_segments = segment_map[Segment.Status.COMPLETE]
 
         n_incomplete = len(unprepared_segments) + len(prepared_segments)
         logger.debug(f'iteration {self._n_iter}: propagating {n_incomplete} segments')
 
+        istate_futures = set()
+        propagator_futures = set()
+        pcoord_futures = set()
+
+        # dispatch pending pcoord calculation tasks
+        if segments := [s for s in complete_segments if s.pcoord is None]:
+            pcoord_futures |= self._calculate_pcoords(segments)
+
+        # dispatch pending istate generation tasks
         if unprepared_segments:
             states = self.source.random_choice(len(unprepared_segments), seed=self.resampler.rng)
             if self.istate_generator is not None:
                 for state in states:
-                    logger.debug(f'generating new initial state from source state {state}')
+                    logger.debug(f'generating new initial state from {state}')
                     future = self.work_manager.submit(self.istate_generator, args=(state,))
                     istate_futures.add(future)
-                    futures.add(future)
             else:
+                segments = []
                 for state in states:
-                    logger.debug(f'using source state {state} directly')
+                    logger.debug(f'using {state} directly as an initial state')
                     segment = unprepared_segments.pop()
                     segment.initial_state = state
-                    prepared_segments.append(segment)
-                self._data_manager.write_initial_states(self._n_iter, prepared_segments)
+                    segments.append(segment)
+                self._data_manager.write_initial_states(self._n_iter, segments)
+                prepared_segments += segments
 
+        # dispatch pending propagation tasks
         for segments in batched(prepared_segments, self.propagator.block_size):
             future = self.work_manager.submit(self.propagator, args=(segments,))
             propagator_futures.add(future)
-            futures.add(future)
         prepared_segments.clear()
 
         logger.info('Waiting for segments to complete...')
 
-        while futures:
+        while futures := istate_futures | propagator_futures | pcoord_futures:
             future = self.work_manager.wait_any(futures)
-            futures.remove(future)
 
             if future in istate_futures:
                 istate_futures.remove(future)
@@ -653,7 +667,6 @@ class Simulation:
                 if len(prepared_segments) == self.propagator.block_size or not istate_futures:
                     future = self.work_manager.submit(self.propagator, args=(prepared_segments,))
                     propagator_futures.add(future)
-                    futures.add(future)
                     prepared_segments.clear()
 
             elif future in propagator_futures:
@@ -662,20 +675,12 @@ class Simulation:
 
                 for segment in segments:
                     if segment.status != Segment.Status.COMPLETE:
-                        logger.error(f'propagation failed for segment {segment.seg_id}')
+                        logger.error('propagation failed for segment %d', segment.seg_id)
                         raise PropagationError(f'seg_id: {segment.seg_id}, reason: {segment.failure_reason}')
                     self._segments[segment.seg_id] = segment
                 self._data_manager.write_final_states(self._n_iter, segments)
 
-                if self.pcoord_calculator is not None:
-                    for segment in segments:
-                        future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
-                        pcoord_futures.add(future)
-                        futures.add(future)
-                else:  # default: pcoord = final_state.coord
-                    for segment in segments:
-                        segment.pcoord = segment.final_state.coord
-                    self._data_manager.write_pcoords(self._n_iter, segments)
+                pcoord_futures |= self._calculate_pcoords(segments)
 
             elif future in pcoord_futures:
                 pcoord_futures.remove(future)
@@ -706,16 +711,13 @@ class Simulation:
 
     def _prepare_new_iteration(self):
         recycled_segments = set()
-        for i, sink in enumerate(self.sinks):
-            segments = {seg for seg in self._resampled_segments if seg in sink}
-            if len(segments) == 0:
-                continue
-            recycled_segments |= segments
-
-            p = sum(seg.weight for seg in segments)
-            label = sink.label if sink.label is not None else i
-            message = f'Recycled {p} probability ({len(segments)} walkers) from sink {label!r}'
-            logger.info(message)
+        for index, sink in enumerate(self.sinks, start=1):
+            if segments := set(filter(sink.indicator, self._resampled_segments)):
+                recycled_segments |= segments
+                p = sum(map(operator.attrgetter('weight'), segments))
+                n = len(segments)
+                label = sink.label if sink.label else index
+                logger.info(f'Recycled {p} probability ({n} walkers) from sink {label!r}')
 
         for index, segment in enumerate(self._resampled_segments):
             parent = self._segments[segment.seg_id]
