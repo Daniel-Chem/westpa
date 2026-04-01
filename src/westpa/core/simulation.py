@@ -27,7 +27,7 @@ from ._data_manager import DataManager
 logger = logging.getLogger(__name__)
 
 
-# Copied from https://docs.python.org/3/library/itertools.html#itertools.batched.
+# copied from https://docs.python.org/3/library/itertools.html#itertools.batched
 # TODO: Replace with itertools.batched() when we require Python >=3.12.
 def batched(iterable, n, *, strict=False):
     # batched('ABCDEFG', 3) → ABC DEF G
@@ -605,7 +605,8 @@ class Simulation:
     def _propagate(self):
         self._call_plugin_method(Plugin.pre_propagation)
 
-        segment_map = defaultdict(list)  # keys: Segment.Status enum members
+        # partition segments by status
+        segment_map = defaultdict(list)
         for segment in self._segments:
             segment_map[segment.status].append(segment)
 
@@ -619,10 +620,6 @@ class Simulation:
         istate_futures = set()
         propagator_futures = set()
         pcoord_futures = set()
-
-        # dispatch pending pcoord calculation tasks
-        if segments := [s for s in complete_segments if s.pcoord is None]:
-            pcoord_futures |= self._calculate_pcoords(segments)
 
         # dispatch pending istate generation tasks
         if unprepared_segments:
@@ -647,6 +644,10 @@ class Simulation:
             future = self.work_manager.submit(self.propagator, args=(segments,))
             propagator_futures.add(future)
         prepared_segments.clear()
+
+        # dispatch pending pcoord calculation tasks
+        if segments := [s for s in complete_segments if s.pcoord is None]:
+            pcoord_futures |= self._calculate_pcoords(segments)
 
         logger.info('Waiting for segments to complete...')
 
