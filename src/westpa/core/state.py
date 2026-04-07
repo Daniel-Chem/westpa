@@ -1,19 +1,23 @@
-import h5py
 import numpy as np
 
 
 class State:
-    """Describes a specific configuration (i.e., a microstate) of the model being simulated.
+    """Represents a particular state of the model being simulated.
 
-    At least one of `coord` or `file` must be provided.
+    Either `coord` or `file` must be specified. The required parameter and the
+    significance of its value are determined by the propagator. If using a
+    built-in propagtor, see its class documentation for details on creating
+    compatible :class:`State` objects.
 
     Parameters
     ----------
     coord : 1-D array_like, optional
-        Coordinates of the state.
+        Coordinate vector of the state. The array length (dimension of state
+        space) and data type are determined by the propagator.
     file : str, optional
-        Identifier (e.g., an absolute path or URI) of a file containing
-        coordinate data for the state.
+        Address of a file containing coordinate data for the state. The format
+        of the address (e.g., absolute path or URL) and the file format are
+        determined by the propagator.
 
     Attributes
     ----------
@@ -23,17 +27,13 @@ class State:
     Examples
     --------
 
-    >>> import westpa
-    >>> import numpy as np
-
     Coordinates stored in memory:
 
+    >>> import westpa
     >>> westpa.State(coord=[0., 0.])
     State(coord=array([0., 0.]))
-    >>> westpa.State(coord=np.array([0., 0.], dtype=np.float32))
-    State(coord=array([0., 0.], dtype=float32))
 
-    Coordinates stored in an external file:
+    Coordinates stored on disk:
 
     >>> westpa.State(file='/path/to/file.xyz'))
     State(file='/path/to/file.xyz')
@@ -41,8 +41,8 @@ class State:
     """
 
     def __init__(self, *, coord=None, file=None):
-        if coord is None and file is None:
-            raise ValueError("at least one of 'coord' or 'file' must be provided")
+        if (coord is None) == (file is None):
+            raise ValueError("either 'coord' or 'file' must be specified")
 
         if coord is not None:
             coord = np.asarray(coord)
@@ -57,7 +57,7 @@ class State:
     @property
     def coord(self):
         """Coordinate vector."""
-        return self._coord.copy() if self._coord is not None else None
+        return self._coord
 
     @property
     def file(self):
@@ -68,25 +68,7 @@ class State:
         kwargs = {}
         if self._coord is not None:
             kwargs['coord'] = self._coord
-        if self._file is not None:
+        else:
             kwargs['file'] = self._file
         params = ', '.join(f'{k}={v!r}' for k, v in kwargs.items())
         return type(self).__name__ + '(' + params + ')'
-
-    def to_numpy(self):
-        fields = []
-        values = []
-        if (coord := self.coord) is not None:
-            fields.append(('coord', coord.dtype, coord.shape))
-            values.append(coord)
-        if (file := self.file) is not None:
-            fields.append(('file', h5py.special_dtype(vlen=str)))
-            values.append(file)
-        return np.array(values, dtype=np.dtype(fields))
-
-    @classmethod
-    def from_numpy(cls, array):
-        return cls(
-            coord=array['coord'] if 'coord' in array.dtype.names else None,
-            file=array['file'].decode('utf-8') if 'file' in array.dtype.names else None,
-        )

@@ -1,6 +1,7 @@
 import logging
 from operator import attrgetter
 
+import h5py
 import numpy as np
 from h5py import h5s
 
@@ -15,6 +16,22 @@ from westpa.core.data_manager import (
 from westpa.core.state import State
 
 logger = logging.getLogger(__name__)
+
+
+def state_to_numpy(state):
+    if state.coord is not None:
+        dtype = np.dtype([('coord', state.coord.dtype, state.coord.shape)])
+        return np.array(state.coord, dtype=dtype)
+    else:
+        dtype = np.dtype([('file', h5py.special_dtype(vlen=str))])
+        return np.array(state.file, dtype=dtype)
+
+
+def state_from_numpy(array):
+    if 'coord' in array.dtype.names:
+        return State(coord=array['coord'])
+    else:
+        return State(file=array['file'].decode('utf-8'))
 
 
 class DataManager(WESTDataManager):
@@ -207,7 +224,7 @@ class DataManager(WESTDataManager):
             Set of segments belonging to iteration `n_iter`.
 
         """
-        arrays = [segment.initial_state.to_numpy() for segment in segments]
+        arrays = [state_to_numpy(s.initial_state) for s in segments]
         dtype = arrays[0].dtype  # infer dtype from first segment
         entries = np.fromiter(arrays, dtype=dtype)
 
@@ -238,7 +255,7 @@ class DataManager(WESTDataManager):
             Set of segments belonging to iteration `n_iter`.
 
         """
-        arrays = [segment.final_state.to_numpy() for segment in segments]
+        arrays = [state_to_numpy(s.final_state) for s in segments]
         dtype = arrays[0].dtype  # infer dtype from first segment
         entries = np.fromiter(arrays, dtype=dtype)
 
@@ -303,10 +320,10 @@ class DataManager(WESTDataManager):
             iter_group = self.get_iter_group(n_iter or self.current_iteration)
             if 'initial_states' in iter_group:
                 for segment, row in zip(segments, iter_group['initial_states'][seg_ids]):
-                    segment.initial_state = State.from_numpy(row)
+                    segment.initial_state = state_from_numpy(row)
             if 'final_states' in iter_group:
                 for segment, row in zip(segments, iter_group['final_states'][seg_ids]):
-                    segment.final_state = State.from_numpy(row)
+                    segment.final_state = state_from_numpy(row)
             if 'pcoord' in iter_group:
                 for segment, row in zip(segments, iter_group['pcoord'][seg_ids]):
                     segment.pcoord = row
