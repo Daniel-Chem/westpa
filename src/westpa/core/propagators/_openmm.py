@@ -28,15 +28,20 @@ class Report:
 class OpenMMPropagator(Propagator):
     """Molecular dynamics propagator built on the `OpenMM <https://openmm.org/>`_ toolkit.
 
-    This propagator assumes that states are specified by providing the absolute
-    path to an XML file containing a serialized OpenMM State object, e.g.::
+    To create a :class:`~westpa.State` object compatible with this propagator,
+    write an OpenMM State object to an XML file (e.g., ``state.xml``)
+    and pass the absolute file path to the `file` parameter::
 
-        state = westpa.State(file='/path/to/state.xml')
+        >>> import westpa
+        >>> import os
+        >>> state = westpa.State(file=os.path.abspath("state.xml"))
+
+    See the ``openmm.XmlSerializer`` documentation for details on serializing OpenMM objects.
 
     Parameters
     ----------
     topology : openmm.app.Topology
-        Topology of the system.
+        Molecular topology (chains, residues, atoms, and bonds).
     system : openmm.System
         System (particles, forces, and constraints) to simulate.
     integrator : openmm.Integrator
@@ -60,10 +65,10 @@ class OpenMMPropagator(Propagator):
     Examples
     --------
 
-    Create a propagator that runs Langevin dynamics at 300 K:
+    Create a propagator that runs 2 ps of Langevin dynamics at 300 K:
 
-    >>> import openmm
     >>> import westpa
+    >>> import openmm
     >>> from openmm import app, unit
     >>> pdb = app.PDBFile('topology.pdb')
     >>> forcefield = app.ForceField('amber14-all.xml')
@@ -79,14 +84,35 @@ class OpenMMPropagator(Propagator):
     ...         frictionCoeff=1 / unit.picosecond,
     ...         stepSize=2 * unit.femtosecond,
     ...     ),
-    ...     steps=1000,  # tau := steps * stepSize = 2 ps
+    ...     steps=1000,
     ... )
 
-    Add a reporter that writes the positions of the first 72 atoms every 100 time steps:
+    Add a reporter that writes the positions of the first 22 atoms every 100
+    steps (0.2 ps):
 
-    >>> propagator.add_reporter(
-    ...     openmm.app.XTCReporter, 'traj.xtc', 100, atomSubset=list(range(72))
-    ... )
+    >>> options = dict(atomSubset=list(range(22)))
+    >>> propagator.add_reporter(app.XTCReporter, 'traj.xtc', 100, **options)
+
+    Add a reporter that writes the kinetic and potential energy every 500 steps:
+
+    >>> options = dict(kineticEnergy=True, potentialEnergy=True)
+    >>> propagator.add_reporter(app.StateDataReporter, 'log.csv', 500, **options)
+
+    Notes
+    -----
+
+    To use this propagator, the `OpenMM <https://pypi.org/project/OpenMM/>`_
+    package must be installed, for example, from PyPI:
+
+    .. code-block:: shell
+
+       pip install openmm
+
+    or conda-forge:
+
+    .. code-block:: shell
+
+       conda install -c conda-forge openmm
 
     """
 
