@@ -9,4 +9,5 @@ Python API
    binning
    resampling
    source_sink
+   simulations
 

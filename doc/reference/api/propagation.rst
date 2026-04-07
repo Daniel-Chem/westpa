@@ -1,5 +1,5 @@
-Propagation
-===========
+Dynamics propagation
+====================
 
 .. autosummary::
    :nosignatures:
