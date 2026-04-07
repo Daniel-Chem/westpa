@@ -90,7 +90,7 @@ class Propagator:
 
         Parameters
         ----------
-        segments : iterable of Segment
+        segments : sequence of Segment
             Segments to propagate.
 
         Returns
