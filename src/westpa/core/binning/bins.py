@@ -12,24 +12,39 @@ EPS = np.finfo(np.float64).eps
 
 # Under the hood,
 class Bin(MutableSet):
-    """A mutable, sorted set of trajectory segments.
+    """A mutable, sorted set of :class:`Segment` objects. The segments in a bin
+    are sorted in increasing order of weight, and the order is automatically
+    maintained as the bin is updated.
 
-    The segments in a ``Bin`` are sorted in increasing order of weight, and
-    the order is automatically maintained as the set is updated.
+    Parameters
+    ----------
+    segments : iterable of Segment, optional
+        Segments to add to the bin.
+    label : str, optional
+        Bin label.
 
     Attributes
     ----------
-    label : str
+    label : str or None
     count : int
     weight : float
-    segments : sequence of Segment
-    weights : numpy.ndarray
+
+    Methods
+    -------
+    __contains__
+    __getitem__
+    __iter__
+    __len__
+    add
+    discard
+    weights
+    bisect_weights
 
     """
 
-    def __init__(self, iterable=None, label=None):
-        self._segments = SortedSet(iterable, key=operator.attrgetter('weight'))
-        self._label = label or ''
+    def __init__(self, segments=None, label=None):
+        self._segments = SortedSet(segments, key=operator.attrgetter('weight'))
+        self._label = label
 
     def __repr__(self):
         names = ['label', 'count', 'weight']
@@ -37,27 +52,37 @@ class Bin(MutableSet):
         return f'<{self.__class__.__name__} at {hex(id(self))}, {attrs}>'
 
     # The next five methods are required to implement MutableSet.
-    def __contains__(self, item):
-        return item in self._segments
+    def __contains__(self, segment):
+        """Return True if the segment is in the bin, False otherwise."""
+        return segment in self._segments
 
     def __iter__(self):
+        """Return an iterator over the segments in the bin."""
         return iter(self._segments)
 
     def __len__(self):
+        """Return the number of segments in the bin."""
         return len(self._segments)
 
-    def add(self, elem):
-        self._segments.add(elem)
+    def add(self, segment):
+        """Add a segment to the bin."""
+        self._segments.add(segment)
 
-    def discard(self, elem):
-        self._segments.discard(elem)
+    def discard(self, segment):
+        """Remove a segment from the bin. Do not raise an exception if absent."""
+        self._segments.discard(segment)
 
-    # MutableSet doesn't provide update() or difference_update().
+    # MutableSet doesn't provide update() or difference_update(), used by we_driver.
     def update(self, *others):
         self._segments.update(*others)
 
     def difference_update(self, *others):
         self._segments.difference_update(*others)
+
+    # Implement Sequence.
+    def __getitem__(self, index):
+        """Return the segment at the given index. Supports slicing."""
+        return self._segments[index]
 
     @property
     def label(self):
@@ -74,26 +99,28 @@ class Bin(MutableSet):
         """Total weight of all segments in the bin."""
         return sum(map(self._segments.key, self))
 
-    @property
-    def segments(self):
-        """Segments in the bin, sorted in increasing order of weight."""
-        return self._segments
-
-    @property
     def weights(self):
-        """Segment weights, sorted in increasing order."""
-        return np.array([segment.weight for segment in self])
+        """Return the segment weights, sorted in increasing order.
+
+        Returns
+        -------
+        numpy.ndarray
+            Sorted array of weights.
+
+        """
+        return np.array(list(map(self._segments.key, self)))
 
     def bisect_weights(self, w, side='left'):
-        """Find the index where `w` should be inserted in :attr:`weights` to maintain sorted order.
+        """Find the index where `w` should be inserted in ``self.weights()`` to maintain sorted order.
 
         Parameters
         ----------
         w : float
             Value to insert.
         side : {'left', 'right'}, optional
-            If 'left', the returned index ``i`` satisfies ``weights[i-1] < w <= weights[i]``.
-            If 'right', it satisfies ``weights[i-1] <= w < weights[i]``.
+            If 'left', return the insertion point before (to the left of) any
+            existing entries of `w`. If 'right', return the insertion point
+            after (to the right of) any existing entries of `w`.
 
         Returns
         -------
@@ -115,22 +142,17 @@ class Bin(MutableSet):
         Parameters
         ----------
         new_weight : float
-            New total weight of the bin.
+            New :attr:`weight` of the bin after reweighting. Must be between 0 and 1.
 
         """
-        if len(self) == 0 and new_weight == 0:
+        if not (0 <= new_weight <= 1):
+            raise ValueError("'new_weight' must be between 0 and 1")
+
+        if len(self) == 0:
+            if new_weight > 0:
+                raise ValueError('cannot reweight empty bin')
             return
 
-        if len(self) == 0 and new_weight != 0:
-            raise ValueError('cannot reweight empty bin')
-
-        current_weight = self.weight
-        logger.debug('reweighting bin with {:d} segments from {:g} to {:g}'.format(len(self), current_weight, new_weight))
-        assert (new_weight == 0 and current_weight == 0) or new_weight > 0
-
-        wrat = new_weight / current_weight
-        for p in self:
-            p.weight *= wrat
-
-        logger.debug('new weight: {:g}'.format(self.weight))
-        assert abs(new_weight - self.weight) <= EPS * len(self)
+        ratio = new_weight / self.weight
+        segments = [segment.replace(weight=ratio * segment.weight) for segment in self]
+        self._segments = SortedSet(segments, key=operator.attrgetter('weight'))
