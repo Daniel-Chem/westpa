@@ -8,7 +8,7 @@ Source-sink boundary conditions
    ~westpa.Sink
 
 .. autoclass:: westpa.Source
-   :members: random_choice
+   :members:
 
 .. autoclass:: westpa.Sink
-   :show-inheritance:
+   :members:

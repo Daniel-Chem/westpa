@@ -15,7 +15,7 @@ For tutorials, how-to guides, and other resources for learning how to use WESTPA
 see the `wiki <https://github.com/westpa/westpa/wiki>`_.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
    cli/index
    api/index

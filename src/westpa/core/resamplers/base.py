@@ -6,61 +6,63 @@ import secrets
 
 import numpy as np
 
-from westpa.core.binning import Bin
 from westpa.core.we_driver import ConsistencyError
+from .ops import split, merge
 
 logger = logging.getLogger(__name__)
 weight_getter = operator.attrgetter('weight')
 
 
 class Resampler(abc.ABC):
-    """Base class for resamplers. Subclasses must implement the
-    :meth:`resample` method, which specifies how to resample the trajectory
-    segments in a given bin.
+    """Base class for resamplers. Subclasses must implement the :meth:`resample` method.
 
     Parameters
     ----------
-    smallest_allowed_weight : float, default 1e-310
-        Smallest allowed weight.
-    larget_allowed_weight : float, default 1.0
-        Largest allowed weight.
     seed : int or sequence of int, optional
         Seed to initialize the pseudo-random number generator. Integer values
         must be non-negative.
+    smallest_allowed_weight : float, default 1e-310
+        Minimum weight threshold. Segments with weights below this value after
+        calling :meth:`resample` will be merged into a single segment.
+    largest_allowed_weight : float, default 1.0
+        Maximum weight threshold. Segments with weights above this value after
+        calling :meth:`resample` will be split into multiple copies.
 
     Attributes
     ----------
-    smallest_allowed_weight : float
-    largest_allowed_weight : float
     rng : numpy.random.Generator
+        Pseudo-random number generator.
+    smallest_allowed_weight : float
+        Minimum weight threshold.
+    largest_allowed_weight : float
+        Maximum weight threshold.
 
     """
 
     @abc.abstractmethod
     def resample(self, bin, target_count):
-        """Resample the trajectory segments in a given bin.
+        """Resample the trajectories in a given bin.
 
         Parameters
         ----------
         bin : Bin
-            Bin to resample from.
+            Bin to resample.
         target_count : int
-            Target number of segments for the bin.
+            Target number of trajectories for the bin.
 
         Returns
         -------
-        iterable of Segment
-            Set of resampled segments.
+        Bin
+            Resampled bin.
 
         """
         ...
 
     def __init__(
         self,
-        *,
+        seed=None,
         smallest_allowed_weight=1e-310,
         largest_allowed_weight=1.0,
-        seed=None,
     ):
         if not (0 < smallest_allowed_weight < 1):
             raise ValueError("'smallest_allowed_weight' must be between 0 and 1")
@@ -70,107 +72,35 @@ class Resampler(abc.ABC):
         seed = seed if seed is not None else secrets.randbits(128)
         logger.info(f'{seed=}')
 
-        self._smallest_allowed_weight = smallest_allowed_weight
-        self._largest_allowed_weight = largest_allowed_weight
-        self._rng = np.random.default_rng(seed)
-
-    @staticmethod
-    def split(segment, bin, m=2):
-        """Split a trajectory segment into two or more copies.
-
-        Parameters
-        ----------
-        segment : Segment
-            Segment to split.
-        bin : set of Segment
-            Bin the segment belongs to.
-        m : int, default 2
-            Number of copies to split `segment` into.
-
-        """
-        if not isinstance(m, int):
-            raise TypeError("'m' must be an integer")
-        if not m >= 2:
-            raise ValueError("'m' must be greater than or equal to 2")
-
-        new_weight = segment.weight / m
-        new_segments = {segment.replace(weight=new_weight) for _ in range(m)}
-
-        bin.remove(segment)
-        bin |= new_segments
-
-    def merge(self, segments, bin, total_weight=None):
-        """Merge multiple trajectory segments into a single segment. The
-        surviving segment is chosen randomly according to weight.
-
-        Parameters
-        ----------
-        segments : iterable of Segment
-            Segments to merge.
-        bin : set of Segment
-            Bin the segments belong to.
-        total_weight : float, optional
-            Combined weight of `segments`. If not passed, the value will be
-            computed by this method.
-
-        """
-        segments = list(segments)
-        weights = np.array([segment.weight for segment in segments])
-
-        if total_weight is None:
-            total_weight = weights.sum()
-
-        segment = self.rng.choice(segments, p=weights / total_weight)
-        new_segment = segment.replace(
-            weight=total_weight,
-            wtg_parent_ids=set.union(*(segment.wtg_parent_ids for segment in segments)),
-        )
-
-        bin -= segments
-        bin.add(new_segment)
-
-    @property
-    def smallest_allowed_weight(self):
-        """Minimum allowed weight."""
-        return self._smallest_allowed_weight
-
-    @property
-    def largest_allowed_weight(self):
-        """Maximum allowed weight."""
-        return self._largest_allowed_weight
-
-    @property
-    def rng(self):
-        """Pseudo-random number generator."""
-        return self._rng
+        self.smallest_allowed_weight = smallest_allowed_weight
+        self.largest_allowed_weight = largest_allowed_weight
+        self.rng = np.random.default_rng(seed)
 
     def _split_by_threshold(self, bin):
         index = bin.bisect_weights(self.largest_allowed_weight, side='right')
-        to_split = bin.segments[index:]
+        to_split = bin[index:]
         for segment in to_split:
             m = math.ceil(segment.weight / self.largest_allowed_weight)
-            self.split(segment, bin, m=m)
+            split(segment, bin, m=m)
 
     def _merge_by_threshold(self, bin):
         while True:
             index = bin.bisect_weights(self.smallest_allowed_weight)
-            to_merge = bin.segments[:index]
+            to_merge = bin[:index]
             if len(to_merge) < 2:
                 return
-            self.merge(to_merge, bin)
+            merge(to_merge, bin, rng=self.rng)
 
     def __call__(self, bin, target_count):
-        bin_weight = bin.weight
+        total_weight = bin.weight
 
-        segments = list(self.resample(bin, target_count))
+        bin = self.resample(bin, target_count)
 
-        weights = np.array([segment.weight for segment in segments])
+        weights = bin.weights()
         if (weights <= 0).any():
             raise ConsistencyError('weights must be greater than 0')
-        if not math.isclose(weights.sum(), bin_weight, abs_tol=1e-12):
+        if not math.isclose(weights.sum(), total_weight, abs_tol=1e-12):
             raise ConsistencyError('resampling must preserve the total weight of the bin')
-
-        bin = Bin(segments, label=bin.label)
 
         self._split_by_threshold(bin)
         self._merge_by_threshold(bin)

@@ -1,5 +1,5 @@
-Binning
-=======
+Bin mappers
+===========
 
 .. autosummary::
    :nosignatures:
@@ -9,7 +9,6 @@ Binning
    ~westpa.RectilinearBinMapper
    ~westpa.MABBinMapper
    ~westpa.BinMapper
-   ~westpa.Bin
 
 .. autoclass:: westpa.VoronoiBinMapper
 .. autoclass:: westpa.RecursiveBinMapper
@@ -17,8 +16,4 @@ Binning
 .. autoclass:: westpa.MABBinMapper
 
 .. autoclass:: westpa.BinMapper
-   :members:
-
-.. autoclass:: westpa.Bin
-   :show-inheritance:
    :members:

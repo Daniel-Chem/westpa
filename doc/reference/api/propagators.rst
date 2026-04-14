@@ -1,5 +1,5 @@
-Dynamics propagation
-====================
+Propagators
+===========
 
 .. autosummary::
    :nosignatures:
@@ -12,3 +12,4 @@ Dynamics propagation
 
 .. autoclass:: westpa.Propagator
    :members:
+

@@ -1,26 +1,21 @@
 import numpy as np
 
 from .base import Resampler
+from .ops import resample_equal_weight
 
 
 class ResidualResampler(Resampler):
-    """Implements the residual resampling method described by Aristoff and Zuckerman. [1]_
+    """Implements residual resampling (described `here <https://arxiv.org/abs/1806.00860>`_ in Algorithm 8.1).
 
     Parameters
     ----------
-    smallest_allowed_weight, largest_allowed_weight, seed
+    seed, smallest_allowed_weight, largest_allowed_weight
         See :class:`Resampler` class documentation for details.
-
-    References
-    ----------
-    .. [1] D. Aristoff, D.M. Zuckerman,
-       Multiscale Model. Simul., Volume 18, Issue 2, 2020, Pages 646-673,
-       https://doi.org/10.1137/18M1212100.
 
     """
 
     def resample(self, bin, target_count):
-        weights = bin.weights
+        weights = bin.weights()
         total_weight = weights.sum()
 
         # See Algorithm 8.1 in https://arxiv.org/abs/1806.00860.
@@ -34,8 +29,5 @@ class ResidualResampler(Resampler):
             r = self.rng.multinomial(n=trials, pvals=delta / trials)
             counts = map(round, nd_floor + r)
 
-        new_weight = total_weight / target_count
-        wtg_parent_ids = set.union(*(segment.wtg_parent_ids for segment in bin))
-        for segment, count in zip(bin, counts):
-            for _ in range(count):
-                yield segment.replace(weight=new_weight, wtg_parent_ids=wtg_parent_ids)
+        ideal_weight = total_weight / target_count
+        return resample_equal_weight(bin, counts, new_weight=ideal_weight)

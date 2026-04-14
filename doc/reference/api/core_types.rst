@@ -1,4 +1,4 @@
-Trajectory data
+Core data types
 ===============
 
 .. autosummary::
@@ -6,6 +6,7 @@ Trajectory data
 
    ~westpa.State
    ~westpa.Segment
+   ~westpa.Bin
 
 .. autoclass:: westpa.State
 
@@ -26,3 +27,7 @@ Trajectory data
    :noindex:
    :show-inheritance:
    :members: UNSET, PREPARED, COMPLETE, FAILED
+
+.. autoclass:: westpa.Bin
+   :show-inheritance:
+   :members:

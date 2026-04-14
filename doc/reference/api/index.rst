@@ -4,10 +4,11 @@ Python API
 .. toctree::
    :maxdepth: 2
 
-   trajectory_data
-   propagation
-   binning
-   resampling
-   source_sink
+   core_types
    simulations
-
+   propagators
+   bin_mappers
+   resamplers
+   source_sink
+   plugins
+   work_managers
