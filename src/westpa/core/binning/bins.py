@@ -37,6 +37,7 @@ class Bin(MutableSet):
     __len__
     add
     discard
+    clear
     weights
     bisect_weights
 
@@ -78,6 +79,11 @@ class Bin(MutableSet):
 
     def difference_update(self, *others):
         self._segments.difference_update(*others)
+
+    # Default clear() mixin method is slow (calls pop() repeatedly).
+    def clear(self):
+        """Empty the bin."""
+        self._segments.clear()
 
     # Implement Sequence.
     def __getitem__(self, index):
