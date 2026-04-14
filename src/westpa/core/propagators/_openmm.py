@@ -29,21 +29,18 @@ class OpenMMPropagator(Propagator):
     """Molecular dynamics propagator built on the `OpenMM <https://openmm.org/>`_ toolkit.
 
     To create a :class:`~westpa.State` object compatible with this propagator,
-    write an OpenMM State object to an XML file (e.g., ``state.xml``)
-    and pass the absolute file path to the `file` parameter::
+    write an OpenMM State object to an XML file (e.g., ``state.xml``) and pass
+    the absolute path to the `file` parameter::
 
         >>> import westpa
-        >>> import os
-        >>> state = westpa.State(file=os.path.abspath("state.xml"))
-
-    See the ``openmm.XmlSerializer`` documentation for details on serializing OpenMM objects.
+        >>> state = westpa.State(file="/path/to/state.xml")
 
     Parameters
     ----------
     topology : openmm.app.Topology
         Molecular topology (chains, residues, atoms, and bonds).
     system : openmm.System
-        System (particles, forces, and constraints) to simulate.
+        OpenMM System object created by applying a force field to `topology`.
     integrator : openmm.Integrator
         Integrator to use for simulating the system.
     steps : int
@@ -52,12 +49,12 @@ class OpenMMPropagator(Propagator):
         Platform to use for calculations.
     platform_properties : Mapping[str, str], optional
         Platform-specific properties to pass to the simulation context.
-    segment_dir_template : str, default 'traj_segs/{n_iter:06d}/{seg_id:06d}'
+    segment_dir_template : str, optional
         Template string specifying the directory in which to store output for a
         given segment. The string must contain ``{n_iter}`` and ``{seg_id}``
         replacement fields. If a relative path is provided, it is assumed to be
         relative to the current working directory.
-    final_state_filename : str, default 'final_state.xml'
+    final_state_filename : str, optional
         Name of the XML file used to store the final state of a segment.
     seed, block_size
         See :class:`~westpa.Propagator` class documentation for details.
@@ -68,16 +65,16 @@ class OpenMMPropagator(Propagator):
     Create a propagator that runs 2 ps of Langevin dynamics at 300 K:
 
     >>> import westpa
-    >>> import openmm
-    >>> from openmm import app, unit
-    >>> pdb = app.PDBFile('topology.pdb')
-    >>> forcefield = app.ForceField('amber14-all.xml')
+    >>> import openmm.app
+    >>> from openmm import unit
+    >>> pdb = openmm.app.PDBFile('topology.pdb')
+    >>> forcefield = openmm.app.ForceField('amber14-all.xml')
     >>> propagator = westpa.OpenMMPropagator(
-    ...     topology=pdb.getTopology(),
+    ...     topology=pdb.topology,
     ...     system=forcefield.createSystem(
-    ...         pdb.getTopology(),
-    ...         nonbondedMethod=app.PME,
-    ...         constraints=app.HBonds,
+    ...         pdb.topology,
+    ...         nonbondedMethod=openmm.app.PME,
+    ...         constraints=openmm.app.HBonds,
     ...     ),
     ...     integrator=openmm.LangevinIntegrator(
     ...         temperature=300 * unit.kelvin,
@@ -87,32 +84,39 @@ class OpenMMPropagator(Propagator):
     ...     steps=1000,
     ... )
 
-    Add a reporter that writes the positions of the first 22 atoms every 100
-    steps (0.2 ps):
+    Add a reporter that writes the positions of the first 22 atoms every 100 steps:
 
-    >>> options = dict(atomSubset=list(range(22)))
-    >>> propagator.add_reporter(app.XTCReporter, 'traj.xtc', 100, **options)
+    >>> propagator.add_reporter(
+    ...     openmm.app.XTCReporter,
+    ...     filename='traj.xtc',
+    ...     report_interval=100,
+    ...     options={'atomSubset': list(range(22))},
+    ... )
 
     Add a reporter that writes the kinetic and potential energy every 500 steps:
 
-    >>> options = dict(kineticEnergy=True, potentialEnergy=True)
-    >>> propagator.add_reporter(app.StateDataReporter, 'log.csv', 500, **options)
+    >>> propagator.add_reporter(
+    ...     openmm.app.StateDataReporter,
+    ...     filename='log.csv',
+    ...     report_interval=500,
+    ...     options={'kineticEnergy': True, 'potentialEnergy': True},
+    ... )
 
     Notes
     -----
 
     To use this propagator, the `OpenMM <https://pypi.org/project/OpenMM/>`_
-    package must be installed, for example, from PyPI:
+    package must be installed, for example:
 
     .. code-block:: shell
 
-       pip install openmm
+       conda install conda-forge::openmm
 
-    or conda-forge:
+    or:
 
     .. code-block:: shell
 
-       conda install -c conda-forge openmm
+       pip install openmm  # available for versions >= 8.1.1
 
     """
 
@@ -141,8 +145,8 @@ class OpenMMPropagator(Propagator):
         self.final_state_filename = final_state_filename
         self._reports = []
 
-    def add_reporter(self, reporter_type, filename, report_interval, **options):
-        """Add a reporter that writes output for each segment.
+    def add_reporter(self, reporter_type, filename, report_interval, options):
+        """Add a reporter to output per-segment data.
 
         Parameters
         ----------
@@ -154,7 +158,7 @@ class OpenMMPropagator(Propagator):
             Name of the file to write output to.
         report_interval : int
             Interval (in time steps) at which to write frames.
-        **options
+        options
             Optional keyword arguments to pass to the `reporter_type` constructor.
 
         """
@@ -162,15 +166,13 @@ class OpenMMPropagator(Propagator):
         self._reports.append(report)
 
     def propagate(self, segment):
-        start = time.time()
-
-        # see https://numpy.org/doc/2.2/reference/random/parallel.html#sequence-of-integer-seeds
-        rng = np.random.default_rng([segment.seg_id, segment.n_iter, self.seed])
+        start_time = time.time()
 
         integrator = copy.copy(self.integrator)  # copy to avoid 'already bound to Context' error
+
+        rng = np.random.default_rng(self.get_worker_seed(segment))
         if hasattr(integrator, 'setRandomNumberSeed'):
             integrator.setRandomNumberSeed(rng.integers(low=1, high=2**31))
-
         for force in self.system.getForces():
             if hasattr(force, 'setRandomNumberSeed'):
                 force.setRandomNumberSeed(rng.integers(low=1, high=2**31))
@@ -200,6 +202,6 @@ class OpenMMPropagator(Propagator):
             final_state_file = os.path.join(segment_dir, self.final_state_filename)
             simulation.saveState(final_state_file)
             segment.final_state = State(file=final_state_file)
-            segment.walltime = time.time() - start
+            segment.walltime = time.time() - start_time
 
         return segment

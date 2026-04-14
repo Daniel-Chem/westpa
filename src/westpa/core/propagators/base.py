@@ -69,6 +69,25 @@ class Propagator:
         """Block size for propagation tasks."""
         return self._block_size
 
+    def get_worker_seed(self, segment):
+        """Return a segment-specific seed for PRNG initialization.
+
+        Parameters
+        ----------
+        segment : :class:`Segment`
+            Segment passed to :meth:`propagate` or :meth:`propagate_block`.
+
+        Returns
+        -------
+        list of int
+            The sequence ``[segment.seg_id, segment.n_iter, self.seed]``.
+            For the rationale behind this choice, see
+            `this section <https://numpy.org/doc/2.2/reference/random/parallel.html#sequence-of-integer-seeds>`_
+            in NumPy's documentation on parallel random number generation.
+
+        """
+        return [segment.seg_id, segment.n_iter, self.seed]
+
     def propagate(self, segment):
         """Propagate a single segment.
 
