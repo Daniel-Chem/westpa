@@ -56,16 +56,16 @@ class Simulation:
 
     Parameters
     ----------
-    datafile : str or BufferedIOBase, default 'west.h5'
+    datafile : str or io.BufferedIOBase, default 'west.h5'
         HDF5 file used to store simulation data. Either a pathname or a binary
-        stream may be provided.
-    propagator : Propagator, optional
+        stream (e.g., a ``BytesIO`` object) may be provided.
+    propagator : :class:`Propagator`, optional
         Routine for propagating trajectories forward in time. Required when
         using the :meth:`run` method to run the simulation. If `propagator` is
         None, the simulation may be run in "WE-only" mode using the
         :meth:`get_segments`, :meth:`update_segments`, and
         :meth:`next_iteration` methods.
-    pcoord_calculator : Callable[[Segment], Segment], optional
+    pcoord_calculator : Callable[[:class:`Segment`], :class:`Segment`], optional
         Routine for computing the progress coordinate(s) of a trajectory
         segment. It should take a propagated segment, set its
         :attr:`~westpa.Segment.pcoord` attribute, and return the modified
@@ -78,23 +78,23 @@ class Simulation:
     bin_target_counts : int or sequence of int, default 1
         Target number of trajectories (allocation) for each bin. If an integer
         is provided, the value will be applied to all the bins. If a sequence
-        is provided, its length must match ``bin_mapper.nbins``.
-    resampler : Resampler, optional
+        is provided, its length must match the ``nbins`` attribute of `bin_mapper`.
+    resampler : :class:`Resampler`, optional
         Routine for resampling the trajectories in each bin. Defaults to
-        ``HuberKimResampler()``.
-    source : Source, optional
+        :class:`HuberKimResampler()`.
+    source : :class:`Source`, optional
         Distribution according to which to reinitiate (recycle) trajectories
         that reach a sink. Must be provided together with `sinks`.
-    sinks : Sink or iterable of Sink, optional
+    sinks : :class:`Sink` or iterable of :class:`Sink`, optional
         Sink (target) regions. Must be provided together with `source`.
     istate_generator : Callable[[State], State], optional
         Routine for modifying the source distribution on the fly (e.g., by
         randomizing one or more degrees of freedom). It should take a state
         from `source` as input and return a new state.
-    work_manager : WorkManager, optional
+    work_manager : :class:`WorkManager`, optional
         Work manager for executing calls to `propagator`, `pcoord_calculator`, and
         `istate_generator`. By default, calls are executed serially.
-    plugins : iterable of Plugin, optional
+    plugins : iterable of :class:`Plugin`, optional
         Plugins to execute at specific points (hooks) in the simulation loop.
 
     Attributes
@@ -111,6 +111,38 @@ class Simulation:
     plugins : iterable of Plugin
     current_iteration : int or None
     initialized : bool
+
+    Examples
+    --------
+
+    >>> import westpa
+
+    To run a simulation, we need a propagator. The following example implements
+    a symmetric random walk on the integers:
+
+    >>> import random
+    >>> class SymmetricRandomWalkPropagator(westpa.Propagator):
+    ...     def propagate(self, segment):
+    ...         coord = segment.initial_state.coord + random.choice([-1, 1])
+    ...         segment.final_state = westpa.State(coord=coord)
+    ...         return segment
+    ...
+
+    Construct a simulation:
+
+    >>> sim = westpa.Simulation(
+    ...     propagator=SymmetricRandomWalkPropagator(),
+    ...     bin_mapper=westpa.RectilinearBinMapper(
+    ...         boundaries=[[-float('inf'), -2., -1., 0., 1., 2., float('inf')]]
+    ...     ),
+    ...     bin_target_counts=5,
+    ... )
+
+    Initialize a simulation:
+
+    >>> state = westpa.State(coord=[0])
+    >>> sim.initialize([state] * 5)
+
 
     """
 
@@ -468,7 +500,7 @@ class Simulation:
 
         In addition to resampling, this method is responsible for recycling any
         trajectories that have reached a sink. In contrast to earlier versions
-        of WESTPA (``<= 2022``), recycling is carried out *after* resampling.
+        of WESTPA (``<= 2022``), recycling is done *after* resampling.
 
         """
         self._run_we()
@@ -623,7 +655,7 @@ class Simulation:
 
         # dispatch pending istate generation tasks
         if unprepared_segments:
-            states = self.source.random_choice(len(unprepared_segments), seed=self.resampler.rng)
+            states = self.source.random_choice(len(unprepared_segments), rng=self.resampler.rng)
             if self.istate_generator is not None:
                 for state in states:
                     logger.debug(f'generating new initial state from {state}')

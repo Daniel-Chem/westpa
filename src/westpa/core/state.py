@@ -2,11 +2,11 @@ import numpy as np
 
 
 class State:
-    """Represents a particular state of the model being simulated.
+    """Describes a specific configuration of the model being simulated.
 
     Either `coord` or `file` must be specified. The required parameter and the
-    significance of its value are determined by the propagator. If using a
-    built-in propagtor, see its class documentation for details on creating
+    significance of its value are determined by the `propagator <propagators.html>`_. If using a
+    built-in propagator, see its class documentation for details on creating
     compatible :class:`State` objects.
 
     Parameters
