@@ -6,12 +6,12 @@ from .state import State
 
 
 class Source:
-    """Distribution according to which walkers that reach a :class:`Sink` are re-initiated (recycled).
+    """Set of states from which trajectories are re-initiated upon reaching a sink.
 
     Parameters
     ----------
-    states : State or iterable of State
-        One or more source states.
+    states : iterable of :class:`State`
+        Set of source states.
     p : 1-D array-like, optional
         Selection probability of each state. Defaults to a uniform distribution.
 
@@ -19,7 +19,7 @@ class Source:
     --------
 
     >>> import westpa
-    >>> states = [westpa.State(coord=[0.0]), westpa.State(coord=[1.0])]
+    >>> states = [westpa.State(coord=[0.]), westpa.State(coord=[1.])]
     >>> westpa.Source(states)
     Source([State(coord=array([0.])), State(coord=array([1.]))], p=[0.5, 0.5])
 
@@ -53,51 +53,46 @@ class Source:
         args = f'{self.states}, p={self.p.tolist()}'
         return type(self).__name__ + '(' + args + ')'
 
-    def random_choice(self, k=1, seed=None):
-        """Generate a random sample of states from the source distribution.
+    def random_choice(self, k=1, rng=None):
+        """Randomly sample states from the source distribution.
 
         Parameters
         ----------
         k : int, optional
             Sample size.
-        seed : int, sequence of int, or numpy.random.Generator, optional
-            Seed to pass to ``numpy.random.default_rng()``. If a ``Generator`` is
-            passed, it will be used directly.
+        rng : numpy.random.Generator, optional
+            Pseudo-random number generator to use. Defaults to
+            ``numpy.random.default_rng()``.
 
         Returns
         -------
-        iterable of State
-            Generated sample of `k` states.
+        sample : iterable of :class:`State`
+            Sample of `k` source states.
 
         """
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng)
         return rng.choice(self.states, p=self.p, size=k).tolist()
 
 
 class Sink(Container):
-    """Represents a sink (target) region.
+    """Describes a sink (target) region; trajectories that reach a sink are recycled.
 
     Parameters
     ----------
-    indicator : Callable[[Segment], bool]
+    indicator : Callable[[:class:`Segment`], bool]
         Function that returns True if a given trajectory segment reached the
-        sink, False otherwise. This function may assume that the segment is
-        ``COMPLETE`` and that its ``pcoord`` attribute is set.
+        sink, False otherwise.
     label : str, optional
         Descriptive label for the sink.
 
     Examples
     --------
 
+    Create a sink containing segments with final (``-1``), first-dimension
+    (``0``) progress coordinate values greater than 1:
+
     >>> import westpa
-    >>> sink = westpa.Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
-
-    Test for membership:
-
-    >>> westpa.Segment(pcoord=[[0.9]]) in sink
-    False
-    >>> westpa.Segment(pcoord=[[1.1]]) in sink
-    True
+    >>> sink = westpa.Sink(lambda segment: segment.pcoord[-1, 0] > 1.0)
 
     """
 
