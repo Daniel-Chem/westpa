@@ -56,7 +56,7 @@ class OpenMMPropagator(Propagator):
         relative to the current working directory.
     final_state_filename : str, optional
         Name of the XML file used to store the final state of a segment.
-    seed, block_size
+    root_seed, block_size
         See :class:`~westpa.Propagator` class documentation for details.
 
     Examples
@@ -131,10 +131,10 @@ class OpenMMPropagator(Propagator):
         platform_properties=None,
         segment_dir_template=DEFAULT_SEGMENT_DIR_TEMPLATE,
         final_state_filename=DEFAULT_FINAL_STATE_FILENAME,
-        seed=None,
+        root_seed=None,
         block_size=None,
     ):
-        super().__init__(seed=seed, block_size=block_size)
+        super().__init__(root_seed=root_seed, block_size=block_size)
         self.topology = topology
         self.system = system
         self.integrator = integrator
@@ -170,7 +170,7 @@ class OpenMMPropagator(Propagator):
 
         integrator = copy.copy(self.integrator)  # copy to avoid 'already bound to Context' error
 
-        rng = np.random.default_rng(self.get_worker_seed(segment))
+        rng = np.random.default_rng(self.get_child_seed(segment))
         if hasattr(integrator, 'setRandomNumberSeed'):
             integrator.setRandomNumberSeed(rng.integers(low=1, high=2**31))
         for force in self.system.getForces():

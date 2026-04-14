@@ -10,8 +10,9 @@ class Propagator:
 
     Parameters
     ----------
-    seed : int, optional
-        Random seed. Must be non-negative. Defaults to ``secrets.randbits(128)``.
+    root_seed : int, optional
+        Root seed integer to use in the :meth:`get_child_seed` method.
+        Must be non-negative. Defaults to ``secrets.randbits(128)``.
     block_size : int, optional
         Block size (in number of segments) for propagation tasks.
         Defaults to 128 if :meth:`propagate_block` is overridden;
@@ -19,7 +20,7 @@ class Propagator:
 
     Attributes
     ----------
-    seed : int
+    root_seed : int
     block_size : int
 
     """
@@ -31,17 +32,17 @@ class Propagator:
         if a == b:
             raise TypeError("subclasses of Propagator must override either 'propagate' or 'propagate_block'")
 
-    def __init__(self, *, seed=None, block_size=None):
+    def __init__(self, *, root_seed=None, block_size=None):
         if type(self) is Propagator:
             raise TypeError("Propagator can't be instantiated directly")
 
-        if seed is None:
-            seed = secrets.randbits(128)
+        if root_seed is None:
+            root_seed = secrets.randbits(128)
         else:
-            if not isinstance(seed, int):
-                raise TypeError("'seed' must be an integer")
-            if seed < 0:
-                raise ValueError("'seed' must be non-negative")
+            if not isinstance(root_seed, int):
+                raise TypeError("'root_seed' must be an integer")
+            if root_seed < 0:
+                raise ValueError("'root_seed' must be non-negative")
 
         if block_size is None:
             if type(self).propagate_block is not Propagator.propagate_block:
@@ -54,39 +55,40 @@ class Propagator:
             if block_size < 1:
                 raise ValueError("'block_size' must be positive")
 
-        logger.info(f'{seed=}')
+        logger.info(f'{root_seed=}')
 
-        self._seed = seed
+        self._root_seed = root_seed
         self._block_size = block_size
 
     @property
-    def seed(self):
-        """Random seed."""
-        return self._seed
+    def root_seed(self):
+        """Root seed."""
+        return self._root_seed
 
     @property
     def block_size(self):
         """Block size for propagation tasks."""
         return self._block_size
 
-    def get_worker_seed(self, segment):
+    def get_child_seed(self, segment):
         """Return a segment-specific seed for PRNG initialization.
 
         Parameters
         ----------
         segment : :class:`Segment`
-            Segment passed to :meth:`propagate` or :meth:`propagate_block`.
+            Segment from which to derive the worker ID component of the child
+            seed.
 
         Returns
         -------
-        list of int
-            The sequence ``[segment.seg_id, segment.n_iter, self.seed]``.
+        sequence of int
+            The sequence ``[segment.seg_id, segment.n_iter, self.root_seed]``.
             For the rationale behind this choice, see
-            `this section <https://numpy.org/doc/2.2/reference/random/parallel.html#sequence-of-integer-seeds>`_
-            in NumPy's documentation on parallel random number generation.
+            `this section <https://numpy.org/doc/stable/reference/random/parallel.html#sequence-of-integer-seeds>`_
+            of the NumPy reference manual.
 
         """
-        return [segment.seg_id, segment.n_iter, self.seed]
+        return [segment.seg_id, segment.n_iter, self.root_seed]
 
     def propagate(self, segment):
         """Propagate a single segment.
