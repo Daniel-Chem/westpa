@@ -87,7 +87,7 @@ class Simulation:
         that reach a sink. Must be provided together with `sinks`.
     sinks : :class:`Sink` or iterable of :class:`Sink`, optional
         Sink (target) regions. Must be provided together with `source`.
-    istate_generator : Callable[[State], State], optional
+    istate_generator : Callable[[:class:`State`], :class:`State`], optional
         Routine for modifying the source distribution on the fly (e.g., by
         randomizing one or more degrees of freedom). It should take a state
         from `source` as input and return a new state.

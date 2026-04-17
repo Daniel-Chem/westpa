@@ -33,7 +33,7 @@ class OpenMMPropagator(Propagator):
     the absolute path to the `file` parameter::
 
         >>> import westpa
-        >>> state = westpa.State(file="/path/to/state.xml")
+        >>> state = westpa.State(file='/path/to/state.xml')
 
     Parameters
     ----------
@@ -106,7 +106,7 @@ class OpenMMPropagator(Propagator):
     -----
 
     To use this propagator, the `OpenMM <https://pypi.org/project/OpenMM/>`_
-    package must be installed, for example:
+    package must be installed, e.g.:
 
     .. code-block:: shell
 
@@ -116,7 +116,7 @@ class OpenMMPropagator(Propagator):
 
     .. code-block:: shell
 
-       pip install openmm  # available for versions >= 8.1.1
+       pip install openmm
 
     """
 
