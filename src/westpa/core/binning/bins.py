@@ -18,7 +18,7 @@ class Bin(MutableSet):
 
     Parameters
     ----------
-    segments : iterable of Segment, optional
+    segments : iterable of :class:`Segment`, optional
         Segments to add to the bin.
     label : str, optional
         Bin label.
@@ -26,7 +26,6 @@ class Bin(MutableSet):
     Attributes
     ----------
     label : str or None
-    count : int
     weight : float
 
     Methods
@@ -40,6 +39,9 @@ class Bin(MutableSet):
     clear
     weights
     bisect_weights
+    reweight
+    split
+    merge
 
     """
 
@@ -96,17 +98,12 @@ class Bin(MutableSet):
         return self._label
 
     @property
-    def count(self):
-        """Number of segments in the bin."""
-        return len(self)
-
-    @property
     def weight(self):
         """Total weight of all segments in the bin."""
         return sum(map(self._segments.key, self))
 
     def weights(self):
-        """Return the segment weights, sorted in increasing order.
+        """Return the segment weights in increasing order.
 
         Returns
         -------
@@ -150,6 +147,11 @@ class Bin(MutableSet):
         new_weight : float
             New :attr:`weight` of the bin after reweighting. Must be between 0 and 1.
 
+        Returns
+        -------
+        self : Bin
+            Reweighted bin.
+
         """
         if not (0 <= new_weight <= 1):
             raise ValueError("'new_weight' must be between 0 and 1")
@@ -162,3 +164,70 @@ class Bin(MutableSet):
         ratio = new_weight / self.weight
         segments = [segment.replace(weight=ratio * segment.weight) for segment in self]
         self._segments = SortedSet(segments, key=operator.attrgetter('weight'))
+
+    def split(self, segment, m=2):
+        """Split a segment into two or more copies, updating the bin contents.
+
+        Parameters
+        ----------
+        segment : :class:`Segment`
+            Segment to split.
+        m : int, default 2
+            Number of copies to split `segment` into.
+
+        Returns
+        -------
+        Set[:class:`Segment`]
+            New segments created by splitting `segment`.
+
+        """
+        if not isinstance(m, int):
+            raise TypeError("'m' must be an integer")
+        if not m >= 2:
+            raise ValueError("'m' must be greater than or equal to 2")
+
+        new_weight = segment.weight / m
+        new_segments = {segment.replace(weight=new_weight) for _ in range(m)}
+
+        self._segments.remove(segment)
+        self._segments |= new_segments
+
+        return new_segments
+
+    def merge(self, segments, total_weight=None, rng=None):
+        """Merge multiple segments into a single segment, updating the bin contents.
+        The surviving walker is chosen randomly according to weight.
+
+        Parameters
+        ----------
+        segments : iterable of :class:`Segment`
+            Segments to merge.
+        total_weight : float, optional
+            Combined weight of `segments`. If not passed, the value will be
+            computed by this function.
+        rng : numpy.random.Generator, optional
+            Pseudo-random number generator to use. Defaults to NumPy's ``default_rng()``.
+
+        Returns
+        -------
+        :class:`Segment`
+            New segment created by merging `segments`.
+
+        """
+        segments = list(segments)
+        weights = np.array(list(map(operator.attrgetter('weight'), segments)))
+
+        if total_weight is None:
+            total_weight = weights.sum()
+
+        rng = np.random.default_rng(rng)
+        segment = rng.choice(segments, p=weights / total_weight)
+        new_segment = segment.replace(
+            weight=total_weight,
+            wtg_parent_ids=set.union(*(segment.wtg_parent_ids for segment in segments)),
+        )
+
+        self._segments -= segments
+        self._segments.add(new_segment)
+
+        return new_segment

@@ -53,7 +53,6 @@ from .core.resamplers import (
     MultinomialResampler,
     ResidualResampler,
 )
-from .core.resamplers.ops import split, merge, resample_equal_weight
 from .core.simulation import Simulation
 from .core.source_sink import Source, Sink
 from .core.plugins import Plugin

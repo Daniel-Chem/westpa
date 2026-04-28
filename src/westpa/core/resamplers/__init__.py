@@ -7,5 +7,4 @@ __all__ = [
 
 from .base import Resampler
 from .huber_kim import HuberKimResampler
-from .multinomial import MultinomialResampler
-from .residual import ResidualResampler
+from .equal_weight import MultinomialResampler, ResidualResampler

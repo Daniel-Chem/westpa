@@ -4,7 +4,6 @@ import math
 import numpy as np
 
 from .base import Resampler
-from .ops import split, merge
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +38,12 @@ class HuberKimResampler(Resampler):
     def __init__(
         self,
         adjust_counts=True,
-        seed=None,
+        rng=None,
         smallest_allowed_weight=1e-310,
         largest_allowed_weight=1.0,
     ):
         super().__init__(
-            seed=seed,
+            rng=rng,
             smallest_allowed_weight=smallest_allowed_weight,
             largest_allowed_weight=largest_allowed_weight,
         )
@@ -55,7 +54,7 @@ class HuberKimResampler(Resampler):
         index = bin.bisect_weights(self.split_threshold * ideal_weight)
         to_split = bin[index:]
         for segment in to_split:
-            split(segment, bin, m=math.ceil(segment.weight / ideal_weight))
+            bin.split(segment, m=math.ceil(segment.weight / ideal_weight))
 
     def _merge_by_weight(self, bin, ideal_weight):
         # Merge sets of walkers with combined weight <= merge_cutoff * ideal_weight.
@@ -65,15 +64,15 @@ class HuberKimResampler(Resampler):
             to_merge = bin[:index]
             if len(to_merge) < 2:
                 break
-            merge(to_merge, bin, total_weight=cumul_weight[index - 1], rng=self.rng)
+            bin.merge(to_merge, total_weight=cumul_weight[index - 1], rng=self.rng)
 
     def _adjust_count(self, bin, target_count):
         while len(bin) < target_count:
             logger.debug('adjusting counts by splitting')
-            split(bin[-1], bin, m=2)
+            bin.split(bin[-1], m=2)
         while len(bin) > target_count:
             logger.debug('adjusting counts by merging')
-            merge(bin[:2], bin, rng=self.rng)
+            bin.merge(bin[:2], rng=self.rng)
 
     def resample(self, bin, target_count):
         ideal_weight = bin.weight / target_count

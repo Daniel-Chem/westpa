@@ -7,7 +7,6 @@ import secrets
 import numpy as np
 
 from westpa.core.we_driver import ConsistencyError
-from .ops import split, merge
 
 logger = logging.getLogger(__name__)
 weight_getter = operator.attrgetter('weight')
@@ -18,9 +17,8 @@ class Resampler(abc.ABC):
 
     Parameters
     ----------
-    seed : int or sequence of int, optional
-        Seed to initialize the pseudo-random number generator. Integer values
-        must be non-negative.
+    rng : numpy.random.Generator, optional
+        Pseudo-random number generator to use. Defaults to NumPy's ``default_rng()``.
     smallest_allowed_weight : float, default 1e-310
         Minimum weight threshold. Segments with weights below this value after
         calling :meth:`resample` will be merged into a single segment.
@@ -60,28 +58,30 @@ class Resampler(abc.ABC):
 
     def __init__(
         self,
-        seed=None,
+        rng=None,
         smallest_allowed_weight=1e-310,
         largest_allowed_weight=1.0,
     ):
+        if rng is None:
+            seed = secrets.randbits(128)
+            logger.info(f"Using NumPy's default random generator, {seed=}")
+            self.rng = np.random.default_rng(seed)
+        else:
+            self.rng = np.random.default_rng(rng)
+
         if not (0 < smallest_allowed_weight < 1):
             raise ValueError("'smallest_allowed_weight' must be between 0 and 1")
         if not (smallest_allowed_weight < largest_allowed_weight <= 1):
             raise ValueError("'largest_allowed_weight' must be between 'smallest_allowed_weight' and 1")
-
-        seed = seed if seed is not None else secrets.randbits(128)
-        logger.info(f'{seed=}')
-
         self.smallest_allowed_weight = smallest_allowed_weight
         self.largest_allowed_weight = largest_allowed_weight
-        self.rng = np.random.default_rng(seed)
 
     def _split_by_threshold(self, bin):
         index = bin.bisect_weights(self.largest_allowed_weight, side='right')
         to_split = bin[index:]
         for segment in to_split:
             m = math.ceil(segment.weight / self.largest_allowed_weight)
-            split(segment, bin, m=m)
+            bin.split(segment, m=m)
 
     def _merge_by_threshold(self, bin):
         while True:
@@ -89,7 +89,7 @@ class Resampler(abc.ABC):
             to_merge = bin[:index]
             if len(to_merge) < 2:
                 return
-            merge(to_merge, bin, rng=self.rng)
+            bin.merge(to_merge, rng=self.rng)
 
     def __call__(self, bin, target_count):
         total_weight = bin.weight
