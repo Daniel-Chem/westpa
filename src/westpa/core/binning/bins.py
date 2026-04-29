@@ -50,9 +50,7 @@ class Bin(MutableSet):
         self._label = label
 
     def __repr__(self):
-        names = ['label', 'count', 'weight']
-        attrs = ', '.join(f'{name}={getattr(self, name)!r}' for name in names)
-        return f'<{self.__class__.__name__} at {hex(id(self))}, {attrs}>'
+        return f'<{type(self).__name__} at {hex(id(self))}, ' f'label={self.label!r}, count={len(self)}, weight={self.weight}>'
 
     # The next five methods are required to implement MutableSet.
     def __contains__(self, segment):
@@ -177,7 +175,7 @@ class Bin(MutableSet):
 
         Returns
         -------
-        Set[:class:`Segment`]
+        new_segments : set of :class:`Segment`
             New segments created by splitting `segment`.
 
         """
@@ -210,7 +208,7 @@ class Bin(MutableSet):
 
         Returns
         -------
-        :class:`Segment`
+        new_segment : :class:`Segment`
             New segment created by merging `segments`.
 
         """
