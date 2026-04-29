@@ -145,7 +145,7 @@ class OpenMMPropagator(Propagator):
         self.final_state_filename = final_state_filename
         self._reports = []
 
-    def add_reporter(self, reporter_type, filename, report_interval, options):
+    def add_reporter(self, reporter_type, filename, report_interval, options=None):
         """Add a reporter to output per-segment data.
 
         Parameters
@@ -158,11 +158,11 @@ class OpenMMPropagator(Propagator):
             Name of the file to write output to.
         report_interval : int
             Interval (in time steps) at which to write frames.
-        options
-            Optional keyword arguments to pass to the `reporter_type` constructor.
+        options : dict[str, Any], optional
+            Keyword arguments to pass to the `reporter_type` constructor.
 
         """
-        report = Report(reporter_type, filename, report_interval, options)
+        report = Report(reporter_type, filename, report_interval, options or {})
         self._reports.append(report)
 
     def propagate(self, segment):
