@@ -41,7 +41,9 @@ the total number of bins within the mapper.
 '''
 
 import hashlib
+import functools
 import logging
+import operator
 import pickle
 
 import numpy as np
@@ -65,30 +67,30 @@ log = logging.getLogger(__name__)
 
 
 class BinMapper:
-    """Base class for bin mappers.
+    """Base class for bin mappers. Subclasses must implement the :meth:`map`
+    method, as well as provide values for the :attr:`nbins` and :attr:`labels`
+    attributes.
 
     Attributes
     ----------
     nbins : int
-        Number of bins to which the bin mapper assigns trajectories.
+        Total number of bins to which the mapper assigns trajectories.
+    labels : list of str
+        Label for each bin.
+
+    Methods
+    -------
+    map
 
     """
-
-    hashfunc = hashlib.sha256
 
     def __init__(self):
         self.labels = None
         self.nbins = 0
 
-    def construct_bins(self):
-        # Construct and return a list of :attr:`nbins` empty bins.
-        #
-        # Returns
-        # -------
-        # list of Bin
-        #     List of :attr:`nbins` empty bins.
-        #
-        return [Bin(label=label) for i, label in zip(range(self.nbins), self.labels)]
+    def construct_bins(self, type_=Bin):
+        # Construct and return an array of bins of type ``type``.
+        return np.array([type_() for _i in range(self.nbins)], dtype=np.object_)
 
     def pickle_and_hash(self):
         # Pickle this mapper and calculate a hash of the result (thus identifying the
@@ -96,31 +98,15 @@ class BinMapper:
         # This will raise PickleError if this mapper cannot be pickled, in which case
         # code that would otherwise rely on detecting a topology change must assume
         # a topology change happened, even if one did not.
-        #
         pkldat = pickle.dumps(self, pickle.HIGHEST_PROTOCOL)
-        hash = self.hashfunc(pkldat)
+        hash = hashlib.sha256(pkldat)
         return (pkldat, hash.hexdigest())
 
     def __repr__(self):
         return '<{} at 0x{:x} with {:d} bins>'.format(self.__class__.__name__, id(self), self.nbins or 0)
 
-    def get_coords(self, segments):
-        # Return the binning coordinates for a set of segments.
-        #
-        # Parameters
-        # ----------
-        # segments : iterable of Segment
-        #     Set of propagated segments.
-        #
-        # Returns
-        # -------
-        # coords : numpy.ndarray
-        #     2-D array of points.
-        #
-        return np.array([segment.pcoord[-1] for segment in segments])
-
     def assign(self, coords, mask=None, output=None):
-        # Assign bin indices to a set of points.
+        # Assign bin indices to a set of coordinate tuples.
         #
         # Parameters
         # ----------
@@ -140,30 +126,34 @@ class BinMapper:
         #
         raise NotImplementedError()
 
-    def map(self, segments):
-        """Partition a set of trajectory segments into bins.
+    def map(self, segments, bins):
+        """Group a set of trajectory segments into bins. This method assigns
+        each element of `segments` to an element of `bins`.
 
         Parameters
         ----------
-        segments : iterable of Segment
-            Set of propagated segments.
-
-        Returns
-        -------
-        list of Bin
-            Sequence of :attr:`nbins` bins, ordered by index.
+        segments : set of :class:`Segment`
+            Segments to bin.
+        bins : sequence of :class:`Bin`
+            Set of :attr:`nbins` bins, ordered by bin index.
 
         """
         segments = list(segments)
-        coords = self.get_coords(segments)
-        bins = self.construct_bins()
+        coords = np.array([segment.pcoord[-1] for segment in segments])
         for i, segment in zip(self.assign(coords), segments):
             bins[i].add(segment)
+
+    def __call__(self, segments):
+        segments = set(segments)
+        bins = [Bin(label=label) for label in self.labels]
+        self.map(segments, bins)
+        if functools.reduce(operator.ior, bins) != segments:
+            raise RuntimeError("map() must assign each segment to a bin")
         return bins
 
 
 class NopMapper(BinMapper):
-    '''Put everything into one bin.'''
+    """Put everything into one bin."""
 
     def __init__(self):
         super().__init__()
@@ -185,7 +175,14 @@ class NopMapper(BinMapper):
 
 
 class RectilinearBinMapper(BinMapper):
-    '''Bin into a rectangular grid based on tuples of float values'''
+    """Bin into a rectangular grid based on tuples of float values.
+
+    Parameters
+    ----------
+    boundaries : iterable of array_like
+        Bin boundaries along each progress coordinate dimension.
+
+    """
 
     def __init__(self, boundaries):
         super().__init__()
@@ -368,9 +365,22 @@ class VectorizingFuncBinMapper(BinMapper):
 
 
 class VoronoiBinMapper(BinMapper):
-    '''A one-dimensional mapper which assigns a multidimensional pcoord to the
-    closest center based on a distance metric. Both the list of centers and the
-    distance function must be supplied.'''
+    """Assign progress coordinate points to the closest center based on a
+    distance metric. Both the list of centers and the distance function must
+    be supplied.
+
+    Parameters
+    ----------
+    dfunc : callable
+        Distance metric.
+    centers : 2-D array_like
+        Voronoi centers.
+    dfargs : tuple, optional
+        Optional arguments to pass to `dfunc`.
+    dfkwargs : Mapping[str, Any], optional
+        Optional keyword arguments to pass to `dfunc`.
+
+    """
 
     def __init__(self, dfunc, centers, dfargs=None, dfkwargs=None):
         self.dfunc = dfunc
@@ -413,7 +423,20 @@ class VoronoiBinMapper(BinMapper):
 
 
 class RecursiveBinMapper(BinMapper):
-    '''Nest mappers one within another.'''
+    """Nest mappers one within another.
+
+    Parameters
+    ----------
+    base_mapper : BinMapper
+        Top-level bin mapper.
+    start_index : int, default 0
+        Initial bin index.
+
+    Methods
+    -------
+    add_mapper
+
+    """
 
     def __init__(self, base_mapper, start_index=0):
         self.base_mapper = base_mapper
@@ -462,9 +485,10 @@ class RecursiveBinMapper(BinMapper):
             startindex += mapper.nbins
 
     def add_mapper(self, mapper, replaces_bin_at):
-        '''Replace the bin containing the coordinate tuple ``replaces_bin_at`` with the
-        specified ``mapper``.'''
+        """Replace the bin containing the coordinate tuple ``replaces_bin_at`` with the
+        specified ``mapper``.
 
+        """
         replaces_bin_at = np.require(replaces_bin_at, dtype=coord_dtype)
         if replaces_bin_at.ndim < 1:
             replaces_bin_at.shape = (1, 1)

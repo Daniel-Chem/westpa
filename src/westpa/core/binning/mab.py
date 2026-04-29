@@ -9,10 +9,43 @@ log = logging.getLogger(__name__)
 
 
 class MABBinMapper(FuncBinMapper):
-    """
-    Adaptively place bins between minimum and maximum segments along
+    """Adaptively place bins between minimum and maximum values along
     the progress coordinate. Extrema and bottleneck segments are assigned
     to their own bins.
+
+    Parameters
+    ----------
+    nbins : list of int
+        List of number of bins in each dimension.
+    direction : list of int, optional
+        Direction specifier for each dimension.
+
+        +--------+--------------------------------------------------------------------------------+
+        | Value  | Description                                                                    |
+        +========+================================================================================+
+        | ``0``  | split at leading and lagging boundaries (default)                              |
+        +--------+--------------------------------------------------------------------------------+
+        | ``1``  | split at leading boundary only                                                 |
+        +--------+--------------------------------------------------------------------------------+
+        | ``-1`` | split at lagging boundary only                                                 |
+        +--------+--------------------------------------------------------------------------------+
+        | ``86`` | no splitting at either leading or lagging boundary (both bottlenecks included) |
+        +--------+--------------------------------------------------------------------------------+
+
+    skip : list of int, optional
+        List of skip flags for each dimension. By default, no dimensions are
+        skipped.
+    bottleneck : bool, default True
+        Whether to enable bottleneck walker splitting.
+    pca : bool, default False
+        Whether to perform PCA on progress coordinates before bin assignment.
+    mab_log : bool, default False
+        Whether to output MAB info to west.log.
+    bin_log : bool, default False
+        Whether to output MAB bin boundaries to a log file.
+    bin_log_path : str, default "$WEST_SIM_ROOT/binbounds.log"
+        Path to output bin boundaries.
+
     """
 
     def __init__(
@@ -26,30 +59,6 @@ class MABBinMapper(FuncBinMapper):
         bin_log: bool = False,
         bin_log_path: str = "$WEST_SIM_ROOT/binbounds.log",
     ):
-        """
-        Parameters
-        ----------
-        nbins : list of int
-            List of number of bins in each dimension.
-        direction : Optional[list of int], default: None
-            List of directions in each dimension. Direction options:
-                0   : default split at leading and lagging boundaries
-                1   : split at leading boundary only
-                -1  : split at lagging boundary only
-                86  : no splitting at either leading or lagging boundary (both bottlenecks included)
-        skip : Optional[list of int], default: None
-            List of skip flags for each dimension. Default None (no skipping).
-        bottleneck : bool, default: True
-            Whether to enable bottleneck walker splitting.
-        pca : bool, default: False
-            Whether to perform PCA on progress coordinates before bin assignment.
-        mab_log : bool, default: False
-            Whether to output MAB info to west.log.
-        bin_log : bool, default: False
-            Whether to output MAB bin boundaries to a log file.
-        bin_log_path : str, default: "$WEST_SIM_ROOT/binbounds.log"
-            Path to output bin boundaries.
-        """
         # Verifying parameters
         if nbins is None:
             raise ValueError("nbins is missing")

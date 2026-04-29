@@ -1,5 +1,5 @@
-Source-sink boundary conditions
-===============================
+Sources and sinks
+=================
 
 .. autosummary::
    :nosignatures:

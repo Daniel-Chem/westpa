@@ -45,10 +45,14 @@ class Segment:
     status : int
     failure_reason : str or None
 
+    Methods
+    -------
+    mark_as_failed
+
     """
 
     class Status(enum.IntEnum):
-        """Integer code indicating a segment's propagation status."""
+        """Integer enum representing the propagation status of a segment."""
 
         UNSET = 0  #: Null value.
         PREPARED = 1  #: Indicates that a segment is prepared for propagation.
@@ -56,19 +60,19 @@ class Segment:
         FAILED = 3  #: Indicates that propagation failed.
 
     class InitPointType(enum.IntEnum):
-        """Integer code indicating a segment's origin."""
+        """Integer enum representing the origin of a segment."""
 
         UNSET = 0  #: Null value.
         CONTINUES = 1  #: Indicates that a segment continues an existing trajectory.
         NEWTRAJ = 2  #: Indicates that a segment begins a new trajectory.
 
     class EndPointType(enum.IntEnum):
-        """Integer code indicating a segment's fate."""
+        """Integer enum representing the fate of a segment."""
 
         UNSET = 0  #: Null value.
-        CONTINUES = 1  #: Indicates that a segment survived resampling (and recycling).
+        CONTINUES = 1  #: Indicates that a segment survived resampling and recycling.
         MERGED = 2  #: Indicates that a segment was pruned during resampling.
-        RECYCLED = 3  #: Indicates that a segment was recycled because it reached a sink (target).
+        RECYCLED = 3  #: Indicates that a segment was recycled because it reached a sink.
 
     SEG_STATUS_UNSET = Status.UNSET
     SEG_STATUS_PREPARED = Status.PREPARED
@@ -95,12 +99,10 @@ class Segment:
     # convenience functions for binning  # TODO: Remove.
     @staticmethod
     def initial_pcoord(segment):
-        """Return the initial progress coordinate point of this segment."""
         return segment.pcoord[0]
 
     @staticmethod
     def final_pcoord(segment):
-        """Return the final progress coordinate point of this segment."""
         return segment.pcoord[-1]
 
     def __init__(
@@ -420,7 +422,7 @@ class Segment:
         Parameters
         ----------
         changes : Mapping[str, Any]
-            Attributes to modify.
+            Set of name-value pairs specifying the attributes to modify.
 
         Returns
         -------

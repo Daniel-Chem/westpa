@@ -92,7 +92,7 @@ class Sink(Container):
     (``0``) progress coordinate values greater than 1:
 
     >>> import westpa
-    >>> sink = westpa.Sink(lambda segment: segment.pcoord[-1, 0] > 1.0)
+    >>> sink = westpa.Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
 
     """
 

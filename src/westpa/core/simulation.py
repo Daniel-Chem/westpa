@@ -86,7 +86,7 @@ class Simulation:
         Distribution according to which to reinitiate (recycle) trajectories
         that reach a sink. Must be provided together with `sinks`.
     sinks : :class:`Sink` or iterable of :class:`Sink`, optional
-        Sink (target) regions. Must be provided together with `source`.
+        Sink (target) sets. Must be provided together with `source`.
     istate_generator : Callable[[:class:`State`], :class:`State`], optional
         Routine for modifying the source distribution on the fly (e.g., by
         randomizing one or more degrees of freedom). It should take a state
@@ -112,37 +112,16 @@ class Simulation:
     current_iteration : int or None
     initialized : bool
 
-    Examples
-    --------
-
-    >>> import westpa
-
-    To run a simulation, we need a propagator. The following example implements
-    a symmetric random walk on the integers:
-
-    >>> import random
-    >>> class SymmetricRandomWalkPropagator(westpa.Propagator):
-    ...     def propagate(self, segment):
-    ...         coord = segment.initial_state.coord + random.choice([-1, 1])
-    ...         segment.final_state = westpa.State(coord=coord)
-    ...         return segment
-    ...
-
-    Construct a simulation:
-
-    >>> sim = westpa.Simulation(
-    ...     propagator=SymmetricRandomWalkPropagator(),
-    ...     bin_mapper=westpa.RectilinearBinMapper(
-    ...         boundaries=[[-float('inf'), -2., -1., 0., 1., 2., float('inf')]]
-    ...     ),
-    ...     bin_target_counts=5,
-    ... )
-
-    Initialize a simulation:
-
-    >>> state = westpa.State(coord=[0])
-    >>> sim.initialize([state] * 5)
-
+    Methods
+    -------
+    initialize
+    run
+    update_bins
+    update_source_and_sinks
+    get_segments
+    update_segments
+    next_iteration
+    add_plugin
 
     """
 
@@ -252,7 +231,7 @@ class Simulation:
 
     @property
     def sinks(self):
-        """Sink (target) regions."""
+        """Sink sets."""
         return self._sinks
 
     @property
@@ -445,7 +424,7 @@ class Simulation:
 
     @requires_initialization
     def get_segments(self):
-        """Return the current segment information.
+        """Return the current segments.
 
         Returns
         -------
@@ -457,12 +436,12 @@ class Simulation:
 
     @requires_initialization
     def update_segments(self, *segments):
-        """Update the current segment information.
+        """Update the current segments.
 
         Parameters
         ----------
         segments : tuple of Segment
-            Modified segments.
+            One or more modified segments.
 
         """
         segments = np.array(segments, dtype=object)
@@ -732,7 +711,7 @@ class Simulation:
         # Initialize the weight transfer graph.
         segments = [s.replace(wtg_parent_ids=[s.seg_id]) for s in self._segments]
 
-        bins = self.bin_mapper.map(segments)
+        bins = self.bin_mapper(segments)
         for i, bin in enumerate(bins):
             if len(bin) == 0:
                 continue
