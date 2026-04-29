@@ -27,9 +27,10 @@ class State:
     Examples
     --------
 
+    >>> import westpa
+
     Coordinates stored in memory:
 
-    >>> import westpa
     >>> westpa.State(coord=[0., 0.])
     State(coord=array([0., 0.]))
 
