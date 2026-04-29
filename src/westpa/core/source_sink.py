@@ -20,6 +20,9 @@ class Source:
 
     >>> import westpa
     >>> states = [westpa.State(coord=[0.]), westpa.State(coord=[1.])]
+
+    Uniform selection probability:
+
     >>> westpa.Source(states)
     Source([State(coord=array([0.])), State(coord=array([1.]))], p=[0.5, 0.5])
 
@@ -75,7 +78,7 @@ class Source:
 
 
 class Sink(Container):
-    """Describes a sink (target) region; trajectories that reach a sink are recycled.
+    """Describes a sink (target) set.
 
     Parameters
     ----------
