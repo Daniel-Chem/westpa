@@ -135,7 +135,7 @@ class BinMapper:
         segments : set of :class:`Segment`
             Segments to bin.
         bins : sequence of :class:`Bin`
-            Set of :attr:`nbins` bins, ordered by bin index.
+            Sequence of :attr:`nbins` bins, indexed by bin number.
 
         """
         segments = list(segments)
