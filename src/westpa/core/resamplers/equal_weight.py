@@ -51,8 +51,8 @@ class ResidualResampler(EqualWeightResampler):
 
     Parameters
     ----------
-    seed, smallest_allowed_weight, largest_allowed_weight
-        See :class:`Resampler` class documentation for details.
+    rng : numpy.random.Generator, optional
+        Pseudo-random number generator to use.
 
     """
 

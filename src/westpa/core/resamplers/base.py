@@ -1,7 +1,6 @@
 import abc
 import logging
 import math
-import operator
 import secrets
 
 import numpy as np
@@ -9,7 +8,6 @@ import numpy as np
 from westpa.core.we_driver import ConsistencyError
 
 logger = logging.getLogger(__name__)
-weight_getter = operator.attrgetter('weight')
 
 
 class Resampler(abc.ABC):
@@ -19,21 +17,11 @@ class Resampler(abc.ABC):
     ----------
     rng : numpy.random.Generator, optional
         Pseudo-random number generator to use. Defaults to NumPy's ``default_rng()``.
-    smallest_allowed_weight : float, default 1e-310
-        Minimum weight threshold. Segments with weights below this value after
-        calling :meth:`resample` will be merged into a single segment.
-    largest_allowed_weight : float, default 1.0
-        Maximum weight threshold. Segments with weights above this value after
-        calling :meth:`resample` will be split into multiple copies.
 
     Attributes
     ----------
     rng : numpy.random.Generator
         Pseudo-random number generator.
-    smallest_allowed_weight : float
-        Minimum weight threshold.
-    largest_allowed_weight : float
-        Maximum weight threshold.
 
     """
 
@@ -56,40 +44,13 @@ class Resampler(abc.ABC):
         """
         ...
 
-    def __init__(
-        self,
-        rng=None,
-        smallest_allowed_weight=1e-310,
-        largest_allowed_weight=1.0,
-    ):
+    def __init__(self, rng=None):
         if rng is None:
             seed = secrets.randbits(128)
             logger.info(f"Using NumPy's default random generator, {seed=}")
             self.rng = np.random.default_rng(seed)
         else:
             self.rng = np.random.default_rng(rng)
-
-        if not (0 < smallest_allowed_weight < 1):
-            raise ValueError("'smallest_allowed_weight' must be between 0 and 1")
-        if not (smallest_allowed_weight < largest_allowed_weight <= 1):
-            raise ValueError("'largest_allowed_weight' must be between 'smallest_allowed_weight' and 1")
-        self.smallest_allowed_weight = smallest_allowed_weight
-        self.largest_allowed_weight = largest_allowed_weight
-
-    def _split_by_threshold(self, bin):
-        index = bin.bisect_weights(self.largest_allowed_weight, side='right')
-        to_split = bin[index:]
-        for segment in to_split:
-            m = math.ceil(segment.weight / self.largest_allowed_weight)
-            bin.split(segment, m=m)
-
-    def _merge_by_threshold(self, bin):
-        while True:
-            index = bin.bisect_weights(self.smallest_allowed_weight)
-            to_merge = bin[:index]
-            if len(to_merge) < 2:
-                return
-            bin.merge(to_merge, rng=self.rng)
 
     def __call__(self, bin, target_count):
         total_weight = bin.weight
@@ -101,14 +62,5 @@ class Resampler(abc.ABC):
             raise ConsistencyError('weights must be greater than 0')
         if not math.isclose(weights.sum(), total_weight, abs_tol=1e-12):
             raise ConsistencyError('resampling must preserve the total weight of the bin')
-
-        self._split_by_threshold(bin)
-        self._merge_by_threshold(bin)
-        for segment in bin:
-            if not (self.smallest_allowed_weight <= segment.weight <= self.largest_allowed_weight):
-                logger.warning(
-                    f'Unable to fulfill weight threshold conditions for {segment}. '
-                    'The given threshold range is likely too small.'
-                )
 
         return bin

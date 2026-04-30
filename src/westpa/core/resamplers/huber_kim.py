@@ -21,8 +21,8 @@ class HuberKimResampler(Resampler):
         Downward adjustments are made by iteratively merging the two
         lowest-weight segments. Upward adjustments are made by iteratively
         splitting the highest-weight segment.
-    seed, smallest_allowed_weight, largest_allowed_weight
-        See :class:`Resampler` class documentation for details.
+    rng : numpy.random.Generator, optional
+        Pseudo-random number generator to use.
 
     References
     ----------
@@ -35,18 +35,8 @@ class HuberKimResampler(Resampler):
     split_threshold = 2.0
     merge_cutoff = 1.0
 
-    def __init__(
-        self,
-        adjust_counts=True,
-        rng=None,
-        smallest_allowed_weight=1e-310,
-        largest_allowed_weight=1.0,
-    ):
-        super().__init__(
-            rng=rng,
-            smallest_allowed_weight=smallest_allowed_weight,
-            largest_allowed_weight=largest_allowed_weight,
-        )
+    def __init__(self, adjust_counts=True, rng=None):
+        super().__init__(rng=rng)
         self.adjust_counts = bool(adjust_counts)
 
     def _split_by_weight(self, bin, ideal_weight):
