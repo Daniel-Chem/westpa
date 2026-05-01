@@ -147,7 +147,7 @@ class BinMapper:
         segments = set(segments)
         bins = [Bin(label=label) for label in self.labels]
         self.map(segments, bins)
-        if functools.reduce(operator.ior, bins) != segments:
+        if functools.reduce(operator.or_, bins) != segments:
             raise RuntimeError("map() must assign each segment to a bin")
         return bins
 
