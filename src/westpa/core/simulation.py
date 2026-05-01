@@ -484,7 +484,7 @@ class Simulation:
 
         Parameters
         ----------
-        segments : tuple of :class:`Segment`
+        *segments : :class:`Segment`
             One or more modified segments.
 
         """
@@ -513,7 +513,7 @@ class Simulation:
 
         self._data_manager.write_initial_states(self._n_iter, segments[has_initial_state])
         self._data_manager.write_final_states(self._n_iter, segments[has_final_state])
-        self._data_manager.write_pcoord(self._n_iter, segments[has_pcoord])
+        self._data_manager.write_pcoords(self._n_iter, segments[has_pcoord])
 
         for segment in segments:
             self._segments[segment.seg_id] = segment
