@@ -53,9 +53,11 @@ class OpenMMPropagator(Propagator):
         Template string specifying the directory in which to store output for a
         given segment. The string must contain ``{n_iter}`` and ``{seg_id}``
         replacement fields. If a relative path is provided, it is assumed to be
-        relative to the current working directory.
+        relative to the current working directory. Defaults to
+        ``'traj_segs/{n_iter:06d}/{seg_id:06d}'``.
     final_state_filename : str, optional
         Name of the XML file used to store the final state of a segment.
+        Defaults to `'final_state.xml'`.
     root_seed, block_size
         See :class:`~westpa.Propagator` class documentation for details.
 
@@ -129,8 +131,8 @@ class OpenMMPropagator(Propagator):
         steps,
         platform=None,
         platform_properties=None,
-        segment_dir_template=DEFAULT_SEGMENT_DIR_TEMPLATE,
-        final_state_filename=DEFAULT_FINAL_STATE_FILENAME,
+        segment_dir_template=None,
+        final_state_filename=None,
         root_seed=None,
         block_size=None,
     ):
@@ -141,8 +143,8 @@ class OpenMMPropagator(Propagator):
         self.steps = steps
         self.platform = platform
         self.platform_properties = platform_properties
-        self.segment_dir_template = os.path.abspath(segment_dir_template)
-        self.final_state_filename = final_state_filename
+        self.segment_dir_template = os.path.abspath(segment_dir_template or DEFAULT_SEGMENT_DIR_TEMPLATE)
+        self.final_state_filename = final_state_filename or DEFAULT_FINAL_STATE_FILENAME
         self._reports = []
 
     def add_reporter(self, reporter_type, filename, report_interval, options=None):
