@@ -47,8 +47,8 @@ class Resampler(abc.ABC):
     def __init__(self, rng=None):
         if rng is None:
             seed = secrets.randbits(128)
-            logger.info(f"Using NumPy's default random generator, {seed=}")
             self.rng = np.random.default_rng(seed)
+            logger.info(f"Using NumPy default_rng({seed=})")
         else:
             self.rng = np.random.default_rng(rng)
 
