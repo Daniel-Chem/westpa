@@ -1,4 +1,4 @@
-'''
+"""
 Bin assignment for WEST simulations. This module defines "bin mappers" which take
 vectors of coordinates (or rather, coordinate tuples), and assign each a definite
 integer value identifying a bin. Critical portions are implemented in a Cython
@@ -38,7 +38,7 @@ scenarios.)
 A user-defined bin mapper must also make an ``nbins`` property available, containing
 the total number of bins within the mapper.
 
-'''
+"""
 
 import hashlib
 import functools
@@ -88,9 +88,9 @@ class BinMapper:
         self.labels = None
         self.nbins = 0
 
-    def construct_bins(self, type_=Bin):
+    def construct_bins(self):
         # Construct and return an array of bins of type ``type``.
-        return np.array([type_() for _i in range(self.nbins)], dtype=np.object_)
+        return [Bin(label=label) for label in self.labels]
 
     def pickle_and_hash(self):
         # Pickle this mapper and calculate a hash of the result (thus identifying the
@@ -145,7 +145,7 @@ class BinMapper:
 
     def __call__(self, segments):
         segments = set(segments)
-        bins = [Bin(label=label) for label in self.labels]
+        bins = self.construct_bins()
         self.map(segments, bins)
         if functools.reduce(operator.or_, bins) != segments:
             raise RuntimeError("map() must assign each segment to a bin")
@@ -255,8 +255,8 @@ class RectilinearBinMapper(BinMapper):
 
 
 class PiecewiseBinMapper(BinMapper):
-    '''Binning using a set of functions returing boolean values; if the Nth function
-    returns True for a coordinate tuple, then that coordinate is in the Nth bin.'''
+    """Binning using a set of functions returing boolean values; if the Nth function
+    returns True for a coordinate tuple, then that coordinate is in the Nth bin."""
 
     def __init__(self, functions):
         self.functions = functions
@@ -290,8 +290,8 @@ class PiecewiseBinMapper(BinMapper):
 
 
 class FuncBinMapper(BinMapper):
-    '''Binning using a custom function which must iterate over input coordinate
-    sets itself.'''
+    """Binning using a custom function which must iterate over input coordinate
+    sets itself."""
 
     def __init__(self, func, nbins, args=None, kwargs=None):
         self.func = func
@@ -327,8 +327,8 @@ class FuncBinMapper(BinMapper):
 
 
 class VectorizingFuncBinMapper(BinMapper):
-    '''Binning using a custom function which is evaluated once for each (unmasked)
-    coordinate tuple provided.'''
+    """Binning using a custom function which is evaluated once for each (unmasked)
+    coordinate tuple provided."""
 
     def __init__(self, func, nbins, args=None, kwargs=None):
         self.func = func
