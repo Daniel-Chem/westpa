@@ -770,7 +770,7 @@ class Simulation:
         # Initialize the weight transfer graph.
         segments = [s.replace(wtg_parent_ids=[s.seg_id]) for s in self._segments]
 
-        bins = self.bin_mapper(segments)
+        bins = list(self.bin_mapper(segments))
 
         for i, bin in enumerate(bins):
             if len(bin) == 0:

@@ -89,8 +89,8 @@ class BinMapper:
         self.nbins = 0
 
     def construct_bins(self):
-        # Construct and return an array of bins of type ``type``.
-        return [Bin(label=label) for label in self.labels]
+        # Construct and return a tuple of ``nbins`` bins.
+        return tuple(Bin(label=label) for label in self.labels)
 
     def pickle_and_hash(self):
         # Pickle this mapper and calculate a hash of the result (thus identifying the
@@ -132,22 +132,21 @@ class BinMapper:
 
         Parameters
         ----------
-        segments : set of :class:`Segment`
+        segments : tuple of :class:`Segment`
             Segments to bin.
-        bins : sequence of :class:`Bin`
-            Sequence of :attr:`nbins` bins, indexed by bin number.
+        bins : tuple of :class:`Bin`
+            Tuple of :attr:`nbins` bins, indexed by bin number.
 
         """
-        segments = list(segments)
         coords = np.array([segment.pcoord[-1] for segment in segments])
         for i, segment in zip(self.assign(coords), segments):
             bins[i].add(segment)
 
     def __call__(self, segments):
-        segments = set(segments)
+        segments = tuple(segments)
         bins = self.construct_bins()
         self.map(segments, bins)
-        if functools.reduce(operator.or_, bins) != segments:
+        if functools.reduce(operator.or_, bins) != set(segments):
             raise RuntimeError("map() must assign each segment to a bin")
         return bins
 

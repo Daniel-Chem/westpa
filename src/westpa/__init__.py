@@ -5,9 +5,6 @@ __all__ = [
     'MultinomialResampler',
     'ResidualResampler',
     'HuberKimResampler',
-    'split',
-    'merge',
-    'resample_equal_weight',
     'Bin',
     'BinMapper',
     'FuncBinMapper',
@@ -17,6 +14,7 @@ __all__ = [
     'RecursiveBinMapper',
     'VectorizingFuncBinMapper',
     'VoronoiBinMapper',
+    'AdaptiveVoronoiBinMapper',
     'Simulation',
     'Source',
     'Sink',
@@ -46,6 +44,7 @@ from .core.binning import (
     VectorizingFuncBinMapper,
     VoronoiBinMapper,
     MABBinMapper,
+    AdaptiveVoronoiBinMapper,
 )
 from .core.resamplers import (
     Resampler,
