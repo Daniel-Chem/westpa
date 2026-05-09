@@ -91,13 +91,6 @@ class Simulation:
         Routine for modifying the source distribution on the fly (e.g., by
         randomizing one or more degrees of freedom). It should take a state
         from `source` as input and return a new state.
-    smallest_allowed_weight : float, default 1e-310
-        Minimum weight threshold. If a resampled bin contains trajectories with
-        weight below this value, they will be merged into a single trajectory.
-    largest_allowed_weight : float, default 1.0
-        Maximum weight threshold. If a resampled bin contains trajectories with
-        weight above this value, they will be split such that the weight of
-        each replica is less than or equal to this value.
     work_manager : WorkManager, optional
         Work manager for executing calls to `propagator`, `pcoord_calculator`, and
         `istate_generator`. By default, calls are executed serially.
@@ -114,8 +107,6 @@ class Simulation:
     resampler : :class:`Resampler`
     source : :class:`Source` or None
     sinks : tuple of :class:`Sink`
-    smallest_allowed_weight : float
-    largest_allowed_weight : float
     work_manager : WorkManager
     plugins : iterable of :class:`Plugin`
     current_iteration : int or None
@@ -127,7 +118,6 @@ class Simulation:
     run
     update_bins
     update_source_and_sinks
-    update_weight_thresholds
     get_segments
     update_segments
     next_iteration
@@ -147,8 +137,6 @@ class Simulation:
         source=None,
         sinks=None,
         istate_generator=None,
-        smallest_allowed_weight=1e-310,
-        largest_allowed_weight=1.0,
         work_manager=None,
         plugins=None,
     ):
@@ -160,8 +148,6 @@ class Simulation:
         self._source = None
         self._sinks = ()
         self._istate_generator = None
-        self._smallest_allowed_weight = None
-        self._largest_allowed_weight = None
         self._work_manager = None
         self._plugins = SortedList(key=operator.attrgetter('priority'))
 
@@ -177,7 +163,6 @@ class Simulation:
         self.resampler = resampler or HuberKimResampler()
         self.update_source_and_sinks(source, sinks)
         self.istate_generator = istate_generator
-        self.update_weight_thresholds(smallest_allowed_weight, largest_allowed_weight)
 
         self.work_manager = work_manager or SerialWorkManager()
 
@@ -287,16 +272,6 @@ class Simulation:
         """Whether the simulation has been initialized."""
         return self._n_iter is not None
 
-    @property
-    def smallest_allowed_weight(self):
-        """Minimum weight threshold."""
-        return self._smallest_allowed_weight
-
-    @property
-    def largest_allowed_weight(self):
-        """Maximum weight threshold."""
-        return self._largest_allowed_weight
-
     def initialize(
         self,
         states,
@@ -404,24 +379,6 @@ class Simulation:
 
         self._bin_mapper = mapper
         self._bin_target_counts = target_counts
-
-    def update_weight_thresholds(self, smallest_allowed_weight, largest_allowed_weight):
-        """Update the minimum and maximum weight thresholds.
-
-        Parameters
-        ----------
-        smallest_allowed_weight : float
-            Minimum weight threshold.
-        largest_allowed_weight : float
-            Maximum weight threshold.
-
-        """
-        if not (0 < smallest_allowed_weight < 1):
-            raise ValueError("'smallest_allowed_weight' must be between 0 and 1")
-        if not (smallest_allowed_weight < largest_allowed_weight <= 1):
-            raise ValueError("'largest_allowed_weight' must be between 'smallest_allowed_weight' and 1")
-        self._smallest_allowed_weight = smallest_allowed_weight
-        self._largest_allowed_weight = largest_allowed_weight
 
     def update_source_and_sinks(self, source, sinks):
         """Update the source and sinks.
@@ -749,21 +706,6 @@ class Simulation:
         self._data_manager.flush_backing()
         self._call_plugin_method(Plugin.post_propagation)
 
-    def _split_by_threshold(self, bin):
-        index = bin.bisect_weights(self.largest_allowed_weight, side='right')
-        to_split = bin[index:]
-        for segment in to_split:
-            m = math.ceil(segment.weight / self.largest_allowed_weight)
-            bin.split(segment, m=m)
-
-    def _merge_by_threshold(self, bin):
-        while True:
-            index = bin.bisect_weights(self.smallest_allowed_weight)
-            to_merge = bin[:index]
-            if len(to_merge) < 2:
-                return
-            bin.merge(to_merge, rng=self.rng)
-
     def _run_we(self):
         self._call_plugin_method(Plugin.pre_we)
 
@@ -771,23 +713,8 @@ class Simulation:
         segments = [s.replace(wtg_parent_ids=[s.seg_id]) for s in self._segments]
 
         bins = list(self.bin_mapper(segments))
-
         for i, bin in enumerate(bins):
-            if len(bin) == 0:
-                continue
-
-            bin = self.resampler(bin, target_count=self.bin_target_counts[i])
-
-            self._split_by_threshold(bin)
-            self._merge_by_threshold(bin)
-            for segment in bin:
-                if not (self.smallest_allowed_weight <= segment.weight <= self.largest_allowed_weight):
-                    logger.warning(
-                        f'Unable to fulfill weight threshold conditions for {segment}. '
-                        'The given threshold range is likely too small.'
-                    )
-
-            bins[i] = bin
+            bins[i] = self.resampler(bin, target_count=self.bin_target_counts[i])
 
         self._resampled_segments = list(itertools.chain(*bins))
 

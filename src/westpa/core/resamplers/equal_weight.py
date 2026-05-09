@@ -1,15 +1,12 @@
-import abc
-
 import numpy as np
 
 from .base import Resampler
 
 
-class EqualWeightResampler(Resampler):
+class _EqualWeightResampler(Resampler):
 
-    @abc.abstractmethod
     def get_sample_counts(self, normalized_weights, target_count):
-        pass
+        raise NotImplementedError()
 
     def resample(self, bin, target_count):
         weights = bin.weights()
@@ -32,29 +29,35 @@ class EqualWeightResampler(Resampler):
         return bin
 
 
-class MultinomialResampler(EqualWeightResampler):
+class MultinomialResampler(_EqualWeightResampler):
     """Randomly samples trajectories according to their relative weights.
 
     Parameters
     ----------
-    rng : numpy.random.Generator, optional
-        Pseudo-random number generator to use.
+    **kwargs
+        Arguments to pass to the :class:`Resampler` constructor.
 
     """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def get_sample_counts(self, normalized_weights, target_count):
         return self.rng.multinomial(n=target_count, pvals=normalized_weights)
 
 
-class ResidualResampler(EqualWeightResampler):
+class ResidualResampler(_EqualWeightResampler):
     """Implements residual resampling (described `here <https://arxiv.org/abs/1806.00860>`_ in Algorithm 8.1).
 
     Parameters
     ----------
-    rng : numpy.random.Generator, optional
-        Pseudo-random number generator to use.
+    **kwargs
+        Arguments to pass to the :class:`Resampler` constructor.
 
     """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def get_sample_counts(self, normalized_weights, target_count):
         # See Algorithm 8.1 in https://arxiv.org/abs/1806.00860.

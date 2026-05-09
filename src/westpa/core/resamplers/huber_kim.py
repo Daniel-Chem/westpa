@@ -21,8 +21,8 @@ class HuberKimResampler(Resampler):
         Downward adjustments are made by iteratively merging the two
         lowest-weight segments. Upward adjustments are made by iteratively
         splitting the highest-weight segment.
-    rng : numpy.random.Generator, optional
-        Pseudo-random number generator to use.
+    **kwargs
+        Arguments to pass to the :class:`Resampler` constructor.
 
     References
     ----------
@@ -35,9 +35,9 @@ class HuberKimResampler(Resampler):
     split_threshold = 2.0
     merge_cutoff = 1.0
 
-    def __init__(self, adjust_counts=True, rng=None):
-        super().__init__(rng=rng)
-        self.adjust_counts = bool(adjust_counts)
+    def __init__(self, adjust_counts=True, **kwargs):
+        super().__init__(**kwargs)
+        self.adjust_counts = adjust_counts
 
     def _split_by_weight(self, bin, ideal_weight):
         # Split walkers with weight > split_threshold * ideal_weight.
@@ -54,7 +54,7 @@ class HuberKimResampler(Resampler):
             to_merge = bin[:index]
             if len(to_merge) < 2:
                 break
-            bin.merge(to_merge, total_weight=cumul_weight[index - 1], rng=self.rng)
+            bin.merge(to_merge, cumulative_weight=cumul_weight[index - 1], rng=self.rng)
 
     def _adjust_count(self, bin, target_count):
         while len(bin) < target_count:

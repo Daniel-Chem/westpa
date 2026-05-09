@@ -105,7 +105,7 @@ class Bin(MutableSet):
 
         Returns
         -------
-        numpy.ndarray
+        weights : numpy.ndarray
             Sorted array of weights.
 
         """
@@ -125,7 +125,7 @@ class Bin(MutableSet):
 
         Returns
         -------
-        int
+        index : int
             Insertion point for `w`.
 
         """
@@ -192,7 +192,7 @@ class Bin(MutableSet):
 
         return new_segments
 
-    def merge(self, segments, total_weight=None, rng=None):
+    def merge(self, segments, cumulative_weight=None, rng=None):
         """Merge multiple segments into a single segment, updating the bin contents.
         The surviving walker is chosen randomly according to weight.
 
@@ -200,11 +200,12 @@ class Bin(MutableSet):
         ----------
         segments : iterable of :class:`Segment`
             Segments to merge.
-        total_weight : float, optional
-            Combined weight of `segments`. If not passed, the value will be
+        cumulative_weight : float, optional
+            Cumulative weight of `segments`. If not passed, the value will be
             computed by this function.
         rng : numpy.random.Generator, optional
-            Pseudo-random number generator to use. Defaults to NumPy's ``default_rng()``.
+            Pseudo-random number generator to use. Defaults to
+            ``numpy.random.default_rng()``.
 
         Returns
         -------
@@ -215,13 +216,13 @@ class Bin(MutableSet):
         segments = list(segments)
         weights = np.array(list(map(operator.attrgetter('weight'), segments)))
 
-        if total_weight is None:
-            total_weight = weights.sum()
+        if cumulative_weight is None:
+            cumulative_weight = weights.sum()
 
         rng = np.random.default_rng(rng)
-        segment = rng.choice(segments, p=weights / total_weight)
+        segment = rng.choice(segments, p=weights / cumulative_weight)
         new_segment = segment.replace(
-            weight=total_weight,
+            weight=cumulative_weight,
             wtg_parent_ids=set.union(*(segment.wtg_parent_ids for segment in segments)),
         )
 
