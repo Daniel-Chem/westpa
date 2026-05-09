@@ -35,7 +35,7 @@ class HuberKimResampler(Resampler):
     split_threshold = 2.0
     merge_cutoff = 1.0
 
-    def __init__(self, adjust_counts=True, **kwargs):
+    def __init__(self, *, adjust_counts=True, **kwargs):
         super().__init__(**kwargs)
         self.adjust_counts = adjust_counts
 
