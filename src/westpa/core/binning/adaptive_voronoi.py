@@ -9,18 +9,18 @@ logger = logging.getLogger(__name__)
 
 
 class AdaptiveVoronoiBinMapper(BinMapper):
-    """Adaptive Voronoi binning scheme from Zhang, Jasnow, and Zuckerman (2010). [1]_
+    """Implements the adaptive Voronoi binning scheme of Zhang, Jasnow, and Zuckerman (2010). [1]_
 
     Parameters
     ----------
     nbins : int, default 10
         Number of Voronoi cells.
     metric : str or callable, default 'euclidean'
-        Distance metric to use. If a string, the distance function can be
-        'braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation',
-        'cosine', 'dice', 'euclidean', 'hamming', 'jaccard', 'jensenshannon',
-        'mahalanobis', 'matching', 'minkowski', 'rogerstanimoto', 'russellrao',
-        'seuclidean', 'sokalsneath', 'sqeuclidean', 'yule'.
+        Distance metric to use. For available metrics, see the
+        ``scipy.spatial.distance.cdist`` documentation.
+    metric_kwargs : dict, optional
+        Extra arguments to `metric`. See the
+        ``scipy.spatial.distance.cdist`` documentation for details.
     update_interval : int, default 1
         Number of iterations between bin updates.
     rng : numpy.random.Generator, optional
@@ -38,12 +38,14 @@ class AdaptiveVoronoiBinMapper(BinMapper):
         self,
         nbins=10,
         metric='euclidean',
+        metric_kwargs=None,
         update_interval=1,
         rng=None,
     ):
         super().__init__()
         self.nbins = nbins
         self.metric = metric
+        self.metric_kwargs = metric_kwargs or {}
         self.update_interval = update_interval
         self.rng = np.random.default_rng(rng)
 
@@ -53,7 +55,7 @@ class AdaptiveVoronoiBinMapper(BinMapper):
         self.last_update = None
 
     def dfunc(self, x, ys):
-        ds = cdist(np.array([x]), ys, metric=self.metric)
+        ds = cdist(np.array([x]), ys, metric=self.metric, **self.metric_kwargs)
         return np.array(ds[0], dtype=np.float32)  # type must match coord_t in _assign.pyx
 
     @property

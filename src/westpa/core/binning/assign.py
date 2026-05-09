@@ -89,7 +89,7 @@ class BinMapper:
         self.nbins = 0
 
     def construct_bins(self):
-        # Construct and return a tuple of ``nbins`` bins.
+        # Construct and return a tuple of ``nbins`` empty bins.
         return tuple(Bin(label=label) for label in self.labels)
 
     def pickle_and_hash(self):
@@ -127,15 +127,14 @@ class BinMapper:
         raise NotImplementedError()
 
     def map(self, segments, bins):
-        """Group a set of trajectory segments into bins. This method assigns
-        each element of `segments` to an element of `bins`.
+        """Assign trajectory segments to bins.
 
         Parameters
         ----------
         segments : tuple of :class:`Segment`
             Segments to bin.
         bins : tuple of :class:`Bin`
-            Tuple of :attr:`nbins` bins, indexed by bin number.
+            Tuple of ``self.nbins`` empty bins.
 
         """
         coords = np.array([segment.pcoord[-1] for segment in segments])
