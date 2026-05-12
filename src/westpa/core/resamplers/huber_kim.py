@@ -22,7 +22,8 @@ class HuberKimResampler(Resampler):
         lowest-weight segments. Upward adjustments are made by iteratively
         splitting the highest-weight segment.
     **kwargs
-        Arguments to pass to the :class:`Resampler` constructor.
+        Keyword arguments to pass to the :class:`Resampler` base class
+        constructor.
 
     References
     ----------

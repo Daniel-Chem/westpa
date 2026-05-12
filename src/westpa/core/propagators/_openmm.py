@@ -108,13 +108,13 @@ class OpenMMPropagator(Propagator):
     -----
 
     To use this propagator, the `OpenMM <https://pypi.org/project/OpenMM/>`_
-    package must be installed, e.g.:
+    package must be installed, for example:
 
     .. code-block:: shell
 
        conda install conda-forge::openmm
 
-    or:
+    or (since OpenMM 8.1.1):
 
     .. code-block:: shell
 

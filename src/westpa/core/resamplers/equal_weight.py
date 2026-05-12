@@ -35,7 +35,8 @@ class MultinomialResampler(_EqualWeightResampler):
     Parameters
     ----------
     **kwargs
-        Arguments to pass to the :class:`Resampler` constructor.
+        Keyword arguments to pass to the :class:`Resampler` base class
+        constructor.
 
     """
 
@@ -47,12 +48,13 @@ class MultinomialResampler(_EqualWeightResampler):
 
 
 class ResidualResampler(_EqualWeightResampler):
-    """Implements residual resampling (described `here <https://arxiv.org/abs/1806.00860>`_ in Algorithm 8.1).
+    """Implements the residual resampling technique (described `here <https://arxiv.org/abs/1806.00860>`_ in Algorithm 8.1).
 
     Parameters
     ----------
     **kwargs
-        Arguments to pass to the :class:`Resampler` constructor.
+        Keyword arguments to pass to the :class:`Resampler` base class
+        constructor.
 
     """
 
