@@ -16,6 +16,7 @@ dependencies:
   - tqdm
   - mdtraj
   - mdanalysis
+  - openmm
   # testing
   - pytest
   - pytest-cov
