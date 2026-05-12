@@ -6,7 +6,6 @@ import math
 import operator
 import os
 import time
-from collections import defaultdict
 from datetime import timedelta
 
 import numpy as np
@@ -618,13 +617,17 @@ class Simulation:
         self._call_plugin_method(Plugin.pre_propagation)
 
         # partition segments by status
-        segment_map = defaultdict(list)
+        unprepared_segments = []
+        prepared_segments = []
+        complete_segments = []
         for segment in self._segments:
-            segment_map[segment.status].append(segment)
-
-        unprepared_segments = segment_map[Segment.Status.UNSET]
-        prepared_segments = segment_map[Segment.Status.PREPARED]
-        complete_segments = segment_map[Segment.Status.COMPLETE]
+            match segment.status:
+                case Segment.Status.UNSET:
+                    unprepared_segments.append(segment)
+                case Segment.Status.PREPARED:
+                    prepared_segments.append(segment)
+                case Segment.Status.COMPLETE:
+                    complete_segments.append(segment)
 
         n_incomplete = len(unprepared_segments) + len(prepared_segments)
         logger.debug(f'iteration {self._n_iter}: propagating {n_incomplete} segments')
