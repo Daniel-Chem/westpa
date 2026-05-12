@@ -53,7 +53,7 @@ dependencies = [
 [project.optional-dependencies]
 tests = ["pytest", "pytest-cov", "pytest-rerunfailures", "pytest-timeout"]
 mpi = ["mpi4py"]
-dev = ["westpa[tests]", "pre-commit"]
+dev = ["westpa[tests]", "pre-commit", "sphinx", "sphinx-autobuild"]
 
 [project.urls]
 Homepage = "https://westpa.github.io"
