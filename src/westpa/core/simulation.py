@@ -594,6 +594,7 @@ class Simulation:
 
     def _prepare_iteration(self):
         logger.debug(f'preparing iteration {self._n_iter}')
+        self._report_statistics(save_summary=True)
         self._call_plugin_method(Plugin.prepare_iteration)
 
     def _finalize_iteration(self):
