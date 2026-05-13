@@ -1,9 +1,9 @@
-plothist
-========
+``plothist``
+============
 
-Use the ``plothist`` tool to plot the results of :ref:`w_pdist`. This tool uses
-an *hdf5* file as its input (i.e. the output of another analysis tool), and
-outputs a *pdf* image.
+Use the ``plothist`` tool to plot the results of ``w_pdist``. This tool uses
+an HDF5 file as its input (i.e. the output of another analysis tool), and
+outputs a PDF image.
 
 The ``plothist`` tool operates in one of three (mutually exclusive)
 plotting modes:

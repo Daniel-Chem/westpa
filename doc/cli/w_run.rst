@@ -1,5 +1,5 @@
-w_run
-=====
+``w_run``
+=========
 
 ``w_run`` starts or continues a weighted ensemble simualtion.
 

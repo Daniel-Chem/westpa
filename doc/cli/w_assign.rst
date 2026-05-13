@@ -1,5 +1,5 @@
-w_assign
-========
+``w_assign``
+============
 
 ``w_assign`` uses simulation output to assign walkers to user-specified bins
 and macrostates. These assignments are required for some other simulation

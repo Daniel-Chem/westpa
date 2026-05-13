@@ -1,5 +1,5 @@
-w_bins
-======
+``w_bins``
+==========
 
 ``w_bins`` deals with binning modification and statistics
 

@@ -1,5 +1,5 @@
-w_init
-======
+``w_init``
+==========
 
 ``w_init`` initializes the weighted ensemble simulation, creates the
 main HDF5 file and prepares the first iteration.

@@ -1,5 +1,5 @@
-w_timings
-=========
+``w_timings``
+=============
 
 ``w_timings`` prints timing information for a WESTPA simulation.
 

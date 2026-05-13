@@ -1,5 +1,5 @@
-ploterr
-=======
+``ploterr``
+===========
 
 usage::
 

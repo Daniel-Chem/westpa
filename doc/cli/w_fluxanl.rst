@@ -1,5 +1,5 @@
-w_fluxanl
-=========
+``w_fluxanl``
+=============
 
 ``w_fluxanl`` calculates the probability flux of a weighted ensemble simulation
 based on a pre-defined target state. Also calculates confidence interval of

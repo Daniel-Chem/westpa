@@ -1,5 +1,5 @@
-w_pdist
-=======
+``w_pdist``
+===========
 
 ``w_pdist`` constructs and calculates the progress coordinate probability
 distribution's evolution over a user-specified number of simulation iterations.

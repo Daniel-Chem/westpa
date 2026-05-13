@@ -1,5 +1,5 @@
-w_truncate
-==========
+``w_truncate``
+==============
 
 ``w_truncate`` removes all iterations after a certain point
 

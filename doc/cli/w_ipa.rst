@@ -1,5 +1,5 @@
-w_ipa
-=====
+``w_ipa``
+=========
 
 The ``w_ipa`` is a (beta) WESTPA tool that automates analysis using analysis schemes and enables interactive analysis of WESTPA simulation data. The tool can do a variety of different types of analysis, including the following:
 * Calculate fluxes and rate constants
