@@ -50,7 +50,7 @@ class Bin(MutableSet):
         self._label = label
 
     def __repr__(self):
-        return f'<{type(self).__name__} at {hex(id(self))}, ' f'label={self.label!r}, count={len(self)}, weight={self.weight}>'
+        return f'<{type(self).__name__} label={self.label!r}, count={len(self)}, weight={self.weight} at {hex(id(self))}>'
 
     # The next five methods are required to implement MutableSet.
     def __contains__(self, segment):
