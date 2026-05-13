@@ -2,7 +2,7 @@ from ..core._data_manager import DataManager  # noqa
 
 
 class TrajectoryTree:
-    """Interface for analyzing the trajectory data from a simulation.
+    """Interface for analyzing WE trajectory data.
 
     Parameters
     ----------
@@ -10,7 +10,7 @@ class TrajectoryTree:
         HDF5 file containing simulation data.
     load_pcoords : bool, default True
         Whether to load progress coordinates when retrieving trajectory
-        segment data.
+        segments.
 
     Attributes
     ----------
@@ -23,7 +23,9 @@ class TrajectoryTree:
     close_datafile
     get_segment
     get_segments
+    get_parent_ids
     parent
+    children
     trace
 
     Examples
@@ -72,7 +74,6 @@ class TrajectoryTree:
     def __init__(
         self,
         datafile,
-        *,
         load_pcoords=True,
     ):
         self.data_manager = DataManager(datafile)
@@ -171,6 +172,23 @@ class TrajectoryTree:
         return self.get_segments(n_iter, seg_ids=[seg_id])[0]
 
     def get_parent_ids(self, n_iter, seg_ids=None):
+        """Return the parent indices of selected segments from a given iteration.
+
+        Parameters
+        ----------
+        n_iter : int
+            Iteration number.
+        seg_ids : list of int, optional
+            Indices of the segments for which to retrieve parent indices
+            If not provided, the parent indices of all the segments (in order)
+            will be returned.
+
+        Returns
+        -------
+        parent_ids : list of int
+            Parent indices of the selected segments.
+
+        """
         return self.data_manager.get_parent_ids(n_iter, seg_ids)
 
     def parent(self, segment):
@@ -191,6 +209,29 @@ class TrajectoryTree:
             return None
         else:
             return self.get_segment(segment.n_iter - 1, segment.parent_id)
+
+    def children(self, segment):
+        """Return the children of a segment.
+
+        Parameters
+        ----------
+        segment : :class:`Segment`
+            Segment to find the children of.
+
+        Returns
+        -------
+        children : list of :class:`Segment`
+            Children of the given segment.
+
+        """
+        parent_ids = self.get_parent_ids(segment.n_iter + 1)
+
+        seg_ids = []
+        for seg_id, parent_id in enumerate(parent_ids):
+            if parent_id == segment.seg_id:
+                seg_ids.append(seg_id)
+
+        return self.get_segments(segment.n_iter + 1, seg_ids)
 
     def trace(self, segment):
         """Trace the lineage of a segment.
