@@ -57,7 +57,7 @@ class OpenMMPropagator(Propagator):
         ``'traj_segs/{n_iter:06d}/{seg_id:06d}'``.
     final_state_filename : str, optional
         Name of the XML file used to store the final state of a segment.
-        Defaults to `'final_state.xml'`.
+        Defaults to ``'final_state.xml'``.
     root_seed, block_size
         See :class:`~westpa.Propagator` class documentation for details.
 
@@ -148,20 +148,20 @@ class OpenMMPropagator(Propagator):
         self._reports = []
 
     def add_reporter(self, reporter_type, filename, report_interval, options=None):
-        """Add a reporter to output per-segment data.
+        """Add a reporter to output time series data for each segment.
 
         Parameters
         ----------
         reporter_type : type
-            Class compatible with the OpenMM Reporter protocol. It must be possible
-            to create an instance by passing ``filename, report_interval, **options``
-            to the `reporter_type` constructor.
+            Class compatible with the OpenMM reporter protocol. It must be
+            possible to create an instance by calling
+            ``reporter_type(filename, report_interval)``.
         filename : str
             Name of the file to write output to.
         report_interval : int
             Interval (in time steps) at which to write frames.
         options : dict[str, Any], optional
-            Keyword arguments to pass to the `reporter_type` constructor.
+            Optional parameters to pass to the `reporter_type` constructor.
 
         """
         report = Report(reporter_type, filename, report_interval, options or {})
