@@ -22,73 +22,48 @@ Overall structure
 ::
 
     /
-        #ibstates/
-            index
-            naming
-                bstate_index
-                bstate_pcoord
-                istate_index
-                istate_pcoord
-        #tstates/
-            index
-        bin_topologies/
-            index
-            pickles
         iterations/
-            iter_XXXXXXXX/\|iter_XXXXXXXX/
+            iter_00000001/
                 auxdata/
-                bin_target_counts
-                ibstates/
-                    bstate_index
-                    bstate_pcoord
-                    istate_index
-                    istate_pcoord
+                final_states
+                initial_states
                 pcoord
                 seg_index
                 wtgraph
             ...
         summary
 
-The root group (/)
-------------------
+Root group (/)
+--------------
 
-The root of the WEST HDF5 file contains the following entries (where a
-trailing "/" denotes a group):
+The root of the WESTPA HDF5 file contains the following members:
 
 =============== ======================= =======================================
-Name            Type                    Description
+Members         Type                    Description
 =============== ======================= =======================================
-ibstates/       Group                   Initial and basis states for this
-                                        simulation
-tstates/        Group                   Target (recycling) states for this
-                                        simulation; may be empty
-bin_topologies/ Group                   Data pertaining to the binning scheme
-                                        used in each iteration
-iterations/     Group                   Iteration data
-summary         Dataset (1-dimensional, Summary data by iteration
-                compound)
+``iterations/`` Group                   Iteration data
+``summary``     Dataset (1-D, compound) Summary data by iteration
 =============== ======================= =======================================
 
-The iteration summary table (/summary)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Iteration summary table (/summary)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=============== ===============================================================
-Field           Description
-=============== ===============================================================
-n_particles     the total number of walkers in this iteration
-norm            total probability, for stability monitoring
-min_bin_prob    smallest probability contained in a bin
-max_bin_prob    largest probability contained in a bin
-min_seg_prob    smallest probability carried by a walker
-max_seg_prob    largest probability carried by a walker
-cputime         total CPU time (in seconds) spent on propagation for this
-                iteration
-walltime        total wallclock time (in seconds) spent on this iteration
-binhash         a hex string identifying the binning used in this iteration
-=============== ===============================================================
+================ ===============================================================
+Field            Description
+================ ===============================================================
+``n_particles``  Total number of walkers in this iteration
+``norm``         Total probability, for stability monitoring
+``min_bin_prob`` Smallest probability contained in a bin
+``max_bin_prob`` Largest probability contained in a bin
+``min_seg_prob`` Smallest probability carried by a walker
+``max_seg_prob`` Largest probability carried by a walker
+``cputime``      Total CPU time (in seconds) spent on propagation for this
+                 iteration
+``walltime``     Total wallclock time (in seconds) spent on this iteration
+================ ===============================================================
 
-Per iteration data (/iterations/iter_{n_iter})
-----------------------------------------------
+Per-iteration data (/iterations/iter_N)
+---------------------------------------
 
 Data for each iteration is stored in its own group, named according to the
 iteration number and zero-padded out to 8 digits, as in
@@ -98,38 +73,34 @@ group name lexicographically. The field width is in fact configurable via the
 ``iter_prec`` configuration entry under ``data`` section of the WESTPA
 configuration file.
 
-The HDF5 group for each iteration contains the following elements:
+The HDF5 group for each iteration contains the following members:
 
 =================== ======================= ===================================
-Name                Type                    Description
+Member              Type                    Description
 =================== ======================= ===================================
-auxdata/            Group                   All user-defined auxiliary data0
-                                            sets
-bin_target_counts   Dataset (1-dimensional) The per-bin target count for the
-                                            iteration
-ibstates/           Group                   Initial and basis state data for
-                                            the iteration
-pcoord              Dataset (3-dimensional) Progress coordinate data for the
-                                            iteration stored as a (num of
-                                            segments, pcoord_len, pcoord_ndim)
-                                            array
-seg_index           Dataset (1-dimensional, Summary data for each segment
-                    compound)
-wtgraph             Dataset (1-dimensional)
+``auxdata/``        Group                   User-defined auxiliary data sets
+``initial_states``  Dataset (1-D, compound) Initial state of each segment
+``final_states``    Dataset (1-D, compound) Final state of each segment
+``pcoord``          Dataset (3-D)           Array of shape
+                                            ``(n_particles, pcoord_len, pcoord_ndim)``
+                                            containing progress coordinate data
+``seg_index``       Dataset (1-D, compound) Summary data for each segment
+``wtgraph``         Dataset (1-D)           Weight transfer graph data
 =================== ======================= ===================================
 
-The segment summary table (/iterations/iter_{n_iter}/seg_index)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Segment summary table (/iterations/iter_N/seg_index)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=============== ===============================================================
-Field           Description
-=============== ===============================================================
-weight          Segment weight
-parent_id       Index of parent
-wtg_n_parents
-wtg_offset
-cputime         Total cpu time required to run the segment
-walltime        Total walltime required to run the segment
-endpoint_type
-status
-=============== ===============================================================
+================== ===============================================================
+Field              Description
+================== ===============================================================
+``weight``         Segment weight
+``parent_id``      Index of parent
+``wtg_n_parents``  Number of entries in ``wtgraph``
+``wtg_offset``     Offset into ``wtgraph``
+``cputime``        Total CPU time required to propagate the segment
+``walltime``       Total walltime required to propagate the segment
+``initpoint_type`` Constant indicating the segment's origin
+``endpoint_type``  Constant indicating the segment's fate
+``status``         Propagation status
+================== ===============================================================
