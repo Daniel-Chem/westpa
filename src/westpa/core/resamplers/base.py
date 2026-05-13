@@ -45,7 +45,6 @@ class Resampler(abc.ABC):
 
     def __init__(
         self,
-        *,
         rng=None,
         smallest_allowed_weight=1e-310,
         largest_allowed_weight=1.0,

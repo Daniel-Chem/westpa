@@ -41,7 +41,7 @@ class State:
 
     """
 
-    def __init__(self, *, coord=None, file=None):
+    def __init__(self, coord=None, file=None):
         if (coord is None) == (file is None):
             raise ValueError("either 'coord' or 'file' must be specified")
 

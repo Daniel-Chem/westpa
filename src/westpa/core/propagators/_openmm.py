@@ -124,7 +124,6 @@ class OpenMMPropagator(Propagator):
 
     def __init__(
         self,
-        *,
         topology,
         system,
         integrator,

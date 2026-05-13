@@ -32,7 +32,7 @@ class Propagator:
         if a == b:
             raise TypeError("subclasses of Propagator must override either 'propagate' or 'propagate_block'")
 
-    def __init__(self, *, root_seed=None, block_size=None):
+    def __init__(self, root_seed=None, block_size=None):
         if type(self) is Propagator:
             raise TypeError("Propagator can't be instantiated directly")
 

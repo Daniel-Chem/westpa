@@ -126,7 +126,6 @@ class Simulation:
 
     def __init__(
         self,
-        *,
         datafile='west.h5',
         propagator=None,
         pcoord_calculator=None,
