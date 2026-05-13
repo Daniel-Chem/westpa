@@ -1,4 +1,6 @@
 Analysis
 ========
 
-.. autoclass:: westpa.analysis.Run
+.. autoclass:: westpa.analysis.TrajectoryTree
+   :members:
+   :special-members: __getitem__

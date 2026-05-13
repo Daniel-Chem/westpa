@@ -12,3 +12,4 @@ Python API
    source_sink
    plugins
    work_managers
+   analysis
