@@ -1,6 +1,5 @@
-Analysis
-========
+Analyzing a simulation
+======================
 
-.. autoclass:: westpa.analysis.TrajectoryTree
+.. autoclass:: westpa.TrajectoryTree
    :members:
-   :special-members: __getitem__
