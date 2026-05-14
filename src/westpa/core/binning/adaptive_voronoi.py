@@ -9,12 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 class AdaptiveVoronoiBinMapper(BinMapper):
-    """Implements the adaptive Voronoi binning scheme of Zhang, Jasnow, and Zuckerman (2010). [1]_
+    """Adaptively place Voronoi sites using the procedure described in Zhang, Jasnow, and Zuckerman (2010). [1]_
 
     Parameters
     ----------
     nbins : int, default 10
-        Number of Voronoi cells.
+        Number of Voronoi sites.
     metric : str or callable, default 'euclidean'
         Distance metric to use. For available metrics, see the
         ``scipy.spatial.distance.cdist`` documentation.

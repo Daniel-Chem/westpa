@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class HuberKimResampler(Resampler):
-    """Implements the splitting and merging technique of Huber and Kim. [1]_
+    """Implements the splitting and merging technique of Huber and Kim (1996). [1]_
 
     Parameters
     ----------

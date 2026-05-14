@@ -30,7 +30,7 @@ class _EqualWeightResampler(Resampler):
 
 
 class MultinomialResampler(_EqualWeightResampler):
-    """Randomly samples trajectories according to their relative weights.
+    """Implements the multinomial resampling technique.
 
     Parameters
     ----------
@@ -48,7 +48,8 @@ class MultinomialResampler(_EqualWeightResampler):
 
 
 class ResidualResampler(_EqualWeightResampler):
-    """Implements the residual resampling technique (described `here <https://arxiv.org/abs/1806.00860>`_ in Algorithm 8.1).
+    """Implements the residual resampling technique (described in Algorithm 8.1
+    of `this preprint <https://arxiv.org/abs/1806.00860>`_).
 
     Parameters
     ----------

@@ -106,24 +106,6 @@ class BinMapper:
         return '<{} at 0x{:x} with {:d} bins>'.format(self.__class__.__name__, id(self), self.nbins or 0)
 
     def assign(self, coords, mask=None, output=None):
-        # Assign bin indices to a set of coordinate tuples.
-        #
-        # Parameters
-        # ----------
-        # coords : numpy.ndarray
-        #     2-D array of points.
-        # mask : numpy.ndarray, optional
-        #     Boolean array indicating which points to assign to bins. By
-        #     default, all points are assigned to bins.
-        # output : numpy.ndarray, optional
-        #     Unsigned integer array to use for output. If not provided, a new
-        #     output array will be created.
-        #
-        # Returns
-        # -------
-        # output : numpy.ndarray
-        #     Bin index assigned to each unmasked point.
-        #
         raise NotImplementedError()
 
     def map(self, segments, bins):
@@ -173,7 +155,7 @@ class NopMapper(BinMapper):
 
 
 class RectilinearBinMapper(BinMapper):
-    """Bin into a rectangular grid based on tuples of float values.
+    """Bin into a rectangular grid.
 
     Parameters
     ----------
@@ -372,7 +354,7 @@ class VoronoiBinMapper(BinMapper):
     dfunc : callable
         Distance metric.
     centers : 2-D array_like
-        Voronoi centers.
+        Voronoi sites.
     dfargs : tuple, optional
         Optional arguments to pass to `dfunc`.
     dfkwargs : Mapping[str, Any], optional
@@ -426,7 +408,7 @@ class RecursiveBinMapper(BinMapper):
     Parameters
     ----------
     base_mapper : BinMapper
-        Top-level bin mapper.
+        Base mapper within which to nest other bin mappers.
     start_index : int, default 0
         Initial bin index.
 
@@ -483,8 +465,16 @@ class RecursiveBinMapper(BinMapper):
             startindex += mapper.nbins
 
     def add_mapper(self, mapper, replaces_bin_at):
-        """Replace the bin containing the coordinate tuple ``replaces_bin_at`` with the
-        specified ``mapper``.
+        """Replace the bin containing the coordinate tuple `replaces_bin_at` with the
+        specified `mapper`.
+
+        Parameters
+        ----------
+        mapper : BinMapper
+            Bin mapper with which to replace the bin containing
+            `replaces_bin_at`.
+        replaces_bin_at : array_like
+            Coordinate tuple indicating the bin to replace.
 
         """
         replaces_bin_at = np.require(replaces_bin_at, dtype=coord_dtype)
