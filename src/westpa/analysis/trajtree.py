@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from ..core._data_manager import DataManager  # noqa
 
 
@@ -179,7 +181,7 @@ class TrajectoryTree:
         n_iter : int
             Iteration number.
         seg_ids : list of int, optional
-            Indices of the segments for which to retrieve parent indices
+            Indices of the segments for which to retrieve parent indices.
             If not provided, the parent indices of all the segments (in order)
             will be returned.
 
@@ -243,9 +245,8 @@ class TrajectoryTree:
 
         Returns
         -------
-        trace : sequence of :class:`Segment`
-            Sequence of segments in the trajectory leading up to and including
-            `segment`.
+        traj : sequence of :class:`Segment`
+            Trajectory leading up to and including `segment`.
 
         """
         segments = [segment]
@@ -253,4 +254,56 @@ class TrajectoryTree:
             segments.append(parent)
             segment = parent
         segments.reverse()
-        return segments
+        return Trajectory(segments)
+
+
+class Trajectory(Sequence):
+    """A contiguous sequence of trajectory segments.
+
+    Parameters
+    ----------
+    segments : sequence of :class:`Segment`
+        Segments comprising the trajectory.
+
+    Attributes
+    ----------
+    states : iterator of :class:`State`
+    initial_state : :class:`State`
+    final_state : :class:`State`
+    iter_range : range
+
+    """
+
+    def __init__(self, segments):
+        self.segments = segments
+
+    def __len__(self):
+        return len(self.segments)
+
+    def __getitem__(self, index):
+        return self.segments[index]
+
+    @property
+    def states(self):
+        """States visited by the trajectory."""
+        for segment in self:
+            yield segment.initial_state
+        yield segment.final_state
+
+    @property
+    def initial_state(self):
+        """Initial state of the trajectory."""
+        return self[0].initial_state
+
+    @property
+    def final_state(self):
+        """Final state of the trajectory."""
+        return self[-1].final_state
+
+    @property
+    def iter_range(self):
+        """Range of iterations spanned by the trajectory."""
+        return range(self[0].n_iter, self[-1].n_iter + 1)
+
+    def __repr__(self):
+        return f'<{type(self).__name__} with {len(self)} segments at {hex(id(self))}>'

@@ -22,6 +22,7 @@ __all__ = [
     'OpenMMPropagator',
     'Plugin',
     'TrajectoryTree',
+    'Trajectory',
     'WESTSystem',
     'BasisState',
     'TargetState',
@@ -62,7 +63,7 @@ try:
 except ImportError:
     pass
 
-from .analysis import TrajectoryTree
+from .analysis import TrajectoryTree, Trajectory
 
 from .core.states import BasisState, TargetState
 from .core.systems import WESTSystem
