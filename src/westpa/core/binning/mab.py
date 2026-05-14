@@ -43,7 +43,7 @@ class MABBinMapper(FuncBinMapper):
         Whether to output MAB info to west.log.
     bin_log : bool, default False
         Whether to output MAB bin boundaries to a log file.
-    bin_log_path : str, default "$WEST_SIM_ROOT/binbounds.log"
+    bin_log_path : str, default "binbounds.log"
         Path to output bin boundaries.
 
     """
@@ -57,7 +57,7 @@ class MABBinMapper(FuncBinMapper):
         pca: bool = False,
         mab_log: bool = False,
         bin_log: bool = False,
-        bin_log_path: str = "$WEST_SIM_ROOT/binbounds.log",
+        bin_log_path: str = "binbounds.log",
     ):
         # Verifying parameters
         if nbins is None:
