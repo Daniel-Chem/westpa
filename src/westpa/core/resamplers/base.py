@@ -79,7 +79,7 @@ class Resampler(abc.ABC):
 
         Returns
         -------
-        resampled_bin : Bin
+        bin : Bin
             Resampled bin.
 
         """
@@ -103,25 +103,24 @@ class Resampler(abc.ABC):
     def __call__(self, bin, target_count):
         if len(bin) == 0:
             return bin
+        initial_weight = bin.weight
 
-        bin_weight = bin.weight
-
-        resampled_bin = self.resample(bin, target_count)
+        bin = self.resample(bin, target_count)
 
         weights = bin.weights()
         if (weights <= 0).any():
             raise ConsistencyError('weights must be greater than 0')
-        if not math.isclose(weights.sum(), bin_weight, abs_tol=1e-12):
+        if not math.isclose(weights.sum(), initial_weight, abs_tol=1e-12):
             raise ConsistencyError('resampling must preserve the total weight of the bin')
 
         if self.thresholds:
-            self._split_by_threshold(resampled_bin)
-            self._merge_by_threshold(resampled_bin)
-            for segment in resampled_bin:
+            self._split_by_threshold(bin)
+            self._merge_by_threshold(bin)
+            for segment in bin:
                 if not (self.smallest_allowed_weight <= segment.weight <= self.largest_allowed_weight):
                     logger.warning(
                         'Unable to fulfill weight threshold conditions for %s. The given threshold range is likely too small.',
                         segment,
                     )
 
-        return resampled_bin
+        return bin
