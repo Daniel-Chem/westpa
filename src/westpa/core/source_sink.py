@@ -91,8 +91,8 @@ class Sink(Container):
     Examples
     --------
 
-    Create a sink containing segments with final (``-1``), first-dimension
-    (``0``) progress coordinate values greater than 1:
+    Create a sink containing segments with final (-1), first-dimension
+    (0) progress coordinate values greater than 1.0:
 
     >>> import westpa
     >>> sink = westpa.Sink(lambda seg: seg.pcoord[-1, 0] > 1.0)
