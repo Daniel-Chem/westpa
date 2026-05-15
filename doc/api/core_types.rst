@@ -12,7 +12,7 @@ Core data types
 
 .. autoclass:: westpa.Segment
    :members:
-   :exclude-members: to_dict, from_dict
+   :exclude-members: to_dict, from_dict, replace
 
 .. autoclass:: westpa.Bin
    :show-inheritance:

@@ -421,13 +421,13 @@ class Segment:
 
         Parameters
         ----------
-        changes : Mapping[str, Any]
-            Set of name-value pairs specifying the attributes to modify.
+        **changes
+            Name-value pairs specifying the fields to modify.
 
         Returns
         -------
         Segment
-            Copy of the segment with attributes modified according to `changes`.
+            Copy of the segment with fields modified according to `changes`.
 
         """
         return self.__replace__(**changes)
