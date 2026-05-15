@@ -35,17 +35,45 @@ class Plugin:
         self._priority = int(value)
 
     def prepare_run(self, sim):
-        """Hook called at the beginning of each run."""
+        """Hook called at the beginning of each run.
+
+        Parameters
+        ----------
+        sim : :class:`Simulation`
+            Simulation to inject the hook into.
+
+        """
         pass
 
     def finalize_run(self, sim):
-        """Hook called at the end of each run."""
+        """Hook called at the end of each run.
+
+        Parameters
+        ----------
+        sim : :class:`Simulation`
+            Simulation to inject the hook into.
+
+        """
         pass
 
     def prepare_iteration(self, sim):
-        """Hook called at the beginning of each iteration."""
+        """Hook called at the beginning of each iteration.
+
+        Parameters
+        ----------
+        sim : :class:`Simulation`
+            Simulation to inject the hook into.
+
+        """
         pass
 
-    def pre_we(self):
-        """Hook called just before binning and resampling."""
+    def pre_we(self, sim):
+        """Hook called just before binning and resampling.
+
+        Parameters
+        ----------
+        sim : :class:`Simulation`
+            Simulation to inject the hook into.
+
+        """
         pass
