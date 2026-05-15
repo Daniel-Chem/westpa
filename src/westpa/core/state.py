@@ -51,13 +51,14 @@ class State:
                 raise TypeError("scalar type of 'coord' must be numeric")
             if coord.ndim != 1:
                 raise ValueError("'coord' must be a 1-D array")
+            coord.flags.writeable = False
 
         self._coord = coord
         self._file = str(file) if file is not None else None
 
     @property
     def coord(self):
-        """Coordinate vector."""
+        """Coordinate vector (as a read-only array)."""
         return self._coord
 
     @property
