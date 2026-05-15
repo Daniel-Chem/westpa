@@ -117,10 +117,12 @@ class Simulation:
     run
     update_bins
     update_source_and_sinks
+    add_plugin
+    prepare_run
+    finalize_run
     get_segments
     update_segments
     next_iteration
-    add_plugin
 
     """
 
@@ -582,12 +584,12 @@ class Simulation:
             self._data_manager.update_iter_summary(iter_summary)
 
     def prepare_run(self):
-        """Open a stream to :attr:`datafile`."""
+        """Open the HDF5 file in read/write mode."""
         self._data_manager.prepare_run()
         self._call_plugin_method(Plugin.prepare_run)
 
     def finalize_run(self):
-        """Close the stream to :attr:`datafile`."""
+        """Flush and close the HDF5 file."""
         self._call_plugin_method(Plugin.finalize_run)
         self._data_manager.finalize_run()
 
