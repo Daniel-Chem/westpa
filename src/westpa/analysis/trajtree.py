@@ -21,24 +21,19 @@ class TrajectoryTree:
 
     Methods
     -------
-    open_datafile
-    close_datafile
     get_segment
     get_segments
     get_parent_ids
     parent
     children
     trace
+    close
 
     Examples
     --------
 
     >>> import westpa
     >>> trajtree = westpa.TrajectoryTree('west.h5')
-
-    Open the HDF5 file for reading:
-
-    >>> trajtree.open_datafile()
 
     Retrieve a single segment:
 
@@ -60,7 +55,10 @@ class TrajectoryTree:
 
     Trace the lineage of a segment:
 
-    >>> trajtree.trace(segment)
+    >>> traj = trajtree.trace(segment)
+    >>> traj
+    <Trajectory with 5 segments at 0x15c8b0500>
+    >>> list(traj)
     [<Segment n_iter=1, seg_id=1, weight=0.2, parent_id=-2, wtg_parent_ids=(-2,) at 0x16bcb6b70>,
      <Segment n_iter=2, seg_id=13, weight=0.04, parent_id=1, wtg_parent_ids=(1,) at 0x16bcb68a0>,
      <Segment n_iter=3, seg_id=14, weight=0.08, parent_id=13, wtg_parent_ids=(10, 13) at 0x16bcb6930>,
@@ -69,7 +67,15 @@ class TrajectoryTree:
 
     Close the HDF5 file:
 
-    >>> trajtree.close_datafile()
+    >>> trajtree.close()
+
+    Use as a context manager to close the HDF5 file automatically:
+
+    >>> with westpa.TrajectoryTree('west.h5') as trajtree:
+    ...     segment = trajtree.get_segment(5, 9)
+    ...
+    >>> segment
+    <Segment n_iter=5, seg_id=9, weight=0.01, parent_id=7, wtg_parent_ids=(7,) at 0x161da3b60>
 
     """
 
@@ -79,6 +85,8 @@ class TrajectoryTree:
         load_pcoords=True,
     ):
         self.data_manager = DataManager(datafile)
+        self.data_manager.open_backing(mode='r')
+
         self._load_pcoords = None
         self.load_pcoords = load_pcoords
 
@@ -98,20 +106,15 @@ class TrajectoryTree:
             raise TypeError("'load_pcoords' must be True or False")
         self._load_pcoords = value
 
-    def open_datafile(self):
-        """Open the HDF5 file for reading."""
-        self.data_manager.open_backing(mode='r')
-
-    def close_datafile(self):
+    def close(self):
         """Close the HDF5 file."""
         self.data_manager.close_backing()
 
     def __enter__(self):
-        self.open_datafile()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close_datafile()
+        self.close()
         return False
 
     def get_segments(self, n_iter, seg_ids=None):
@@ -235,13 +238,15 @@ class TrajectoryTree:
 
         return self.get_segments(segment.n_iter + 1, seg_ids)
 
-    def trace(self, segment):
+    def trace(self, segment, maxlen=None):
         """Trace the lineage of a segment.
 
         Parameters
         ----------
         segment : :class:`Segment`
             Segment to trace.
+        maxlen : int, optional
+            Maximum number of segments in the returned trace.
 
         Returns
         -------
@@ -249,11 +254,20 @@ class TrajectoryTree:
             Trajectory leading up to and including `segment`.
 
         """
+        if maxlen is not None:
+            if not isinstance(maxlen, int):
+                raise TypeError("'maxlen' must be an integer")
+            if maxlen < 1:
+                raise ValueError("'maxlen' must be positive")
+
         segments = [segment]
         while parent := self.parent(segment):
+            if maxlen is not None and len(segments) == maxlen:
+                break
             segments.append(parent)
             segment = parent
         segments.reverse()
+
         return Trajectory(segments)
 
 
@@ -285,7 +299,7 @@ class Trajectory(Sequence):
 
     @property
     def states(self):
-        """States visited by the trajectory."""
+        """Iterator over the sequence of states visited by the trajectory."""
         for segment in self:
             yield segment.initial_state
         yield segment.final_state
