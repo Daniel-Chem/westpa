@@ -13,6 +13,13 @@ class Plugin:
     ----------
     priority : int
 
+    Methods
+    -------
+    prepare_run
+    finalize_run
+    prepare_iteration
+    pre_we
+
     """
 
     def __init__(self, priority=0):
@@ -28,37 +35,17 @@ class Plugin:
         self._priority = int(value)
 
     def prepare_run(self, sim):
-        """Method to call at the beginning of each run."""
+        """Hook called at the beginning of each run."""
         pass
 
     def finalize_run(self, sim):
-        """Method to call at the end of each run."""
+        """Hook called at the end of each run."""
         pass
 
     def prepare_iteration(self, sim):
-        """Method to call at the beginning of each iteration."""
+        """Hook called at the beginning of each iteration."""
         pass
 
-    def finalize_iteration(self, sim):
-        """Method to call at the end of each iteration."""
-        pass
-
-    def pre_propagation(self, sim):
-        """Method to call before running dynamics."""
-        pass
-
-    def post_propagation(self, sim):
-        """Method to call after running dynamics."""
-        pass
-
-    def pre_we(self, sim):
-        """Method to call before weighted ensemble resampling."""
-        pass
-
-    def post_we(self, sim):
-        """Method to call after weighted ensemble resampling."""
-        pass
-
-    def prepare_new_iteration(self, sim):
-        """Method to call after preparing the next iteration's segments."""
+    def pre_we(self):
+        """Hook called just before binning and resampling."""
         pass

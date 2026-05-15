@@ -174,7 +174,7 @@ class Simulation:
             self._data_manager.open_backing()
             self._n_iter = self._data_manager.current_iteration
             self._segments = self._data_manager.get_segments()
-            logger.debug(f'iteration {self._n_iter}; loaded {len(self._segments)} segments')
+            logger.debug('iteration %d; loaded %d segments', self._n_iter, len(self._segments))
             self._data_manager.close_backing()
 
     @property
@@ -586,22 +586,21 @@ class Simulation:
     def prepare_run(self):
         """Open the HDF5 file in read/write mode."""
         self._data_manager.prepare_run()
-        self._call_plugin_method(Plugin.prepare_run)
+        self._call_plugin_hook(Plugin.prepare_run)
 
     def finalize_run(self):
         """Flush and close the HDF5 file."""
-        self._call_plugin_method(Plugin.finalize_run)
+        self._call_plugin_hook(Plugin.finalize_run)
         self._data_manager.finalize_run()
 
     def _prepare_iteration(self):
-        logger.debug(f'preparing iteration {self._n_iter}')
+        logger.debug('preparing iteration %d', self._n_iter)
+        self._call_plugin_hook(Plugin.prepare_iteration)
         self._report_statistics(save_summary=True)
-        self._call_plugin_method(Plugin.prepare_iteration)
 
     def _finalize_iteration(self):
-        logger.debug('finalizing iteration {:d}'.format(self._n_iter))
+        logger.debug('finalizing iteration %d', self._n_iter)
         self._data_manager.finalize_iteration(self._n_iter, self._segments)
-        self._call_plugin_method(Plugin.finalize_iteration)
 
     def _calculate_pcoords(self, segments):
         futures = set()
@@ -616,7 +615,9 @@ class Simulation:
         return futures
 
     def _propagate(self):
-        self._call_plugin_method(Plugin.pre_propagation)
+        istate_futures = set()
+        propagator_futures = set()
+        pcoord_futures = set()
 
         # partition segments by status
         unprepared_segments = []
@@ -632,24 +633,20 @@ class Simulation:
                     complete_segments.append(segment)
 
         n_incomplete = len(unprepared_segments) + len(prepared_segments)
-        logger.debug(f'iteration {self._n_iter}: propagating {n_incomplete} segments')
-
-        istate_futures = set()
-        propagator_futures = set()
-        pcoord_futures = set()
+        logger.debug('iteration %d: propagating %d segments', self._n_iter, n_incomplete)
 
         # dispatch pending istate generation tasks
         if unprepared_segments:
             states = self.source.random_choice(len(unprepared_segments), rng=self.resampler.rng)
             if self.istate_generator is not None:
                 for state in states:
-                    logger.debug(f'generating new initial state from {state}')
+                    logger.debug('generating new initial state from %s', state)
                     future = self.work_manager.submit(self.istate_generator, args=(state,))
                     istate_futures.add(future)
             else:
                 segments = []
                 for state in states:
-                    logger.debug(f'using {state} directly as an initial state')
+                    logger.debug('using %s directly as an initial state', state)
                     segment = unprepared_segments.pop()
                     segment.initial_state = state
                     segments.append(segment)
@@ -707,14 +704,12 @@ class Simulation:
                 self._data_manager.write_pcoords(self._n_iter, segments=[segment])
 
         logger.debug('done with propagation')
-
         self._data_manager.flush_backing()
-        self._call_plugin_method(Plugin.post_propagation)
 
     def _run_we(self):
-        self._call_plugin_method(Plugin.pre_we)
+        self._call_plugin_hook(Plugin.pre_we)
 
-        # Initialize the weight transfer graph.
+        # initialize the weight transfer graph
         segments = [s.replace(wtg_parent_ids=[s.seg_id]) for s in self._segments]
 
         bins = list(self.bin_mapper(segments))
@@ -722,8 +717,6 @@ class Simulation:
             bins[i] = self.resampler(bin, target_count=self.bin_target_counts[i])
 
         self._resampled_segments = list(itertools.chain(*bins))
-
-        self._call_plugin_method(Plugin.post_we)
 
     def _prepare_new_iteration(self):
         recycled_segments = set()
@@ -766,9 +759,7 @@ class Simulation:
 
         self._data_manager.prepare_iteration(self._n_iter + 1, self._next_iter_segments)
 
-        self._call_plugin_method(Plugin.prepare_new_iteration)
-
-    def _call_plugin_method(self, base_method):
+    def _call_plugin_hook(self, base_method):
         for plugin in self._plugins:
             method = getattr(plugin.__class__, base_method.__name__)
             if method is not base_method:

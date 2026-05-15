@@ -368,18 +368,26 @@ class TestRun:
         hook_calls = []
 
         class TrackingPlugin(westpa.Plugin):
-            def prepare_iteration(self, simulation):
+            def prepare_run(self, sim):
+                hook_calls.append('prepare_run')
+
+            def finalize_run(self, sim):
+                hook_calls.append('finalize_run')
+
+            def prepare_iteration(self, sim):
                 hook_calls.append('prepare_iteration')
 
-            def finalize_iteration(self, simulation):
-                hook_calls.append('finalize_iteration')
+            def pre_we(self, sim):
+                hook_calls.append('pre_we')
 
         sim.add_plugin(TrackingPlugin())
         sim.initialize(westpa.State(coord=[0.0]))
         sim.run(n_iters=2)
 
+        assert hook_calls.count('prepare_run') == 1
         assert hook_calls.count('prepare_iteration') == 2
-        assert hook_calls.count('finalize_iteration') == 2
+        assert hook_calls.count('pre_we') == 2
+        assert hook_calls.count('finalize_run') == 1
 
     def test_propagation_error_is_raised(self, datafile):
         sim = westpa.Simulation(
