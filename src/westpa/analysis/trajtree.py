@@ -18,6 +18,7 @@ class TrajectoryTree:
     ----------
     datafile : str or io.BufferedIOBase
     load_pcoords : bool
+    n_iters : int
 
     Methods
     -------
@@ -105,6 +106,11 @@ class TrajectoryTree:
         if not isinstance(value, bool):
             raise TypeError("'load_pcoords' must be True or False")
         self._load_pcoords = value
+
+    @property
+    def n_iters(self):
+        """Number of iterations (layers) in the trajectory tree."""
+        return self.data_manager.current_iteration - 1
 
     def close(self):
         """Close the HDF5 file."""
@@ -270,6 +276,9 @@ class TrajectoryTree:
 
         return Trajectory(segments)
 
+    def __repr__(self):
+        return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
+
 
 class Trajectory(Sequence):
     """A contiguous sequence of trajectory segments.
@@ -297,9 +306,8 @@ class Trajectory(Sequence):
     def __getitem__(self, index):
         return self.segments[index]
 
-    @property
     def states(self):
-        """Iterator over the sequence of states visited by the trajectory."""
+        """Sequence of states visited by the trajectory."""
         for segment in self:
             yield segment.initial_state
         yield segment.final_state
