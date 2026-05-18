@@ -51,7 +51,7 @@ def requires_initialization(func):
 
 
 class Simulation:
-    """Interface for initializing and running a weighted ensemble simulation.
+    """Interface for initializing and running a weighted ensemble (WE) simulation.
 
     Parameters
     ----------
