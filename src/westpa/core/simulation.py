@@ -68,15 +68,14 @@ class Simulation:
         Routine for computing the progress coordinate(s) of a trajectory
         segment. It should take a propagated segment, set its
         :attr:`~westpa.Segment.pcoord` attribute, and return the modified
-        segment. By default, ``pcoord`` is set to ``final_state.coord``. The
-        default is appropriate for low-dimensional (e.g., 1-D) models where the
-        progress coordinate space coincides with the full state space.
+        segment. If `pcoord_calculator` is None, ``pcoord`` will be set to
+        ``final_state.coord`` (which must have a value in this case).
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
-    bin_target_counts : int or sequence of int, default 1
+    bin_target_counts : int or iterable of int, default 1
         Target number of trajectories (allocation) for each bin. If an integer
-        is provided, the value will be applied to all the bins. If a sequence
+        is provided, the value will be applied to all the bins. If an iterable
         is provided, its length must match the ``nbins`` attribute of `bin_mapper`.
     resampler : :class:`Resampler`, optional
         Routine for resampling the trajectories in each bin. Defaults to
@@ -87,10 +86,9 @@ class Simulation:
     sinks : :class:`Sink` or iterable of :class:`Sink`, optional
         Sink (target) sets. Must be provided together with `source`.
     istate_generator : Callable[[:class:`State`], :class:`State`], optional
-        Routine for modifying the source distribution on the fly (e.g., by
-        randomizing one or more degrees of freedom). It should take a state
-        from `source` as input and return a new state.
-    work_manager : WorkManager, optional
+        Routine for modifying the source distribution on the fly. It should
+        take a state from `source` as input and return a new state.
+    work_manager : `WorkManager <work_managers.html>`_, optional
         Work manager for executing calls to `propagator`, `pcoord_calculator`, and
         `istate_generator`. By default, calls are executed serially.
     plugins : iterable of :class:`Plugin`, optional
@@ -107,7 +105,7 @@ class Simulation:
     source : :class:`Source` or None
     sinks : tuple of :class:`Sink`
     work_manager : WorkManager
-    plugins : iterable of :class:`Plugin`
+    plugins : sequence of :class:`Plugin`
     current_iteration : int or None
     initialized : bool
 
@@ -259,7 +257,7 @@ class Simulation:
 
     @property
     def plugins(self):
-        """Plugins."""
+        """Plugins in order of priority."""
         return self._plugins
 
     @property
@@ -360,8 +358,8 @@ class Simulation:
         ----------
         mapper : :class:`BinMapper`
             Routine for grouping trajectory segments into bins.
-        target_counts : int or sequence of int
-            Target number of trajectories for each bin. If a sequence is
+        target_counts : int or iterable of int
+            Target number of trajectories for each bin. If an iterable is
             provided, its length must match ``bin_mapper.nbins``.
 
         """
@@ -371,7 +369,7 @@ class Simulation:
         if isinstance(target_counts, int):
             target_counts = np.repeat(target_counts, mapper.nbins)
         else:
-            target_counts = np.asarray(target_counts, dtype=int)
+            target_counts = np.fromiter(target_counts, dtype=int)
             if not len(target_counts) == mapper.nbins:
                 raise ValueError("length of 'target_counts' must equal the number of bins")
         if (target_counts <= 0).any():
@@ -386,9 +384,9 @@ class Simulation:
         Parameters
         ----------
         source : :class:`Source` or None
-            Source distribution.
+            Source distribution. If None, `sinks` must also be None.
         sinks : :class:`Sink`, iterable of :class:`Sink`, or None
-            Sink (target) regions.
+            One or more sink (target) sets. If None, `source` must also be None.
 
         """
         if not (source or sinks):
@@ -425,7 +423,7 @@ class Simulation:
 
     @requires_initialization
     def get_segments(self):
-        """Return the current segments.
+        """Retrieve the current segments.
 
         Returns
         -------
@@ -614,6 +612,7 @@ class Simulation:
             self._data_manager.write_pcoords(self._n_iter, segments)
         return futures
 
+    # manages istate generation, propagation, and pcoord calculation tasks
     def _propagate(self):
         istate_futures = set()
         propagator_futures = set()
