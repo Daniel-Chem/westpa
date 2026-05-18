@@ -339,8 +339,8 @@ class Simulation:
             Number of iterations to run.
         max_walltime : float, optional
             Maximum wall-clock time in seconds. If provided, the simulation
-            will be terminated early if it is estimated that the next
-            iteration would cause the runtime to exceed `max_walltime`.
+            will be stopped if it is estimated that the next iteration would
+            cause the total runtime to exceed `max_walltime`.
 
         """
         if self.propagator is None:

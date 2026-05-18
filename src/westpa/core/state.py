@@ -21,8 +21,8 @@ class State:
 
     Attributes
     ----------
-    coord : numpy.ndarray
-    file : str
+    coord : numpy.ndarray or None
+    file : str or None
 
     Examples
     --------

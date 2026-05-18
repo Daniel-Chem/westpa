@@ -29,20 +29,20 @@ class Segment:
 
     Attributes
     ----------
-    weight : float
+    n_iter : int or None
+    seg_id : int or None
+    weight : float or None
+    parent_id : int or None
+    wtg_parent_ids : set of int
     initial_state : :class:`State` or None
     final_state : :class:`State` or None
     pcoord : numpy.ndarray or None
     data : MutableMapping[str, numpy.ndarray]
-    walltime : float
-    cputime : float
-    n_iter : int
-    seg_id : int
-    parent_id : int
-    wtg_parent_ids : set of int
     initpoint_type : int
     endpoint_type : int
     status : int
+    walltime : float
+    cputime : float
     failure_reason : str or None
 
     Methods
@@ -160,7 +160,7 @@ class Segment:
 
     @property
     def seg_id(self):
-        """Segment index (0-based)."""
+        """Segment index."""
         return self._seg_id
 
     @seg_id.setter

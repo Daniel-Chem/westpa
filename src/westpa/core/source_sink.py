@@ -6,7 +6,7 @@ from .state import State
 
 
 class Source:
-    """Set of states from which trajectories are re-initiated upon reaching a sink.
+    """Set of states from which trajectories are reinitiated upon reaching a sink.
 
     Parameters
     ----------

@@ -23,7 +23,8 @@ class Resampler(abc.ABC):
     largest_allowed_weight : float, default 1.0
         Maximum weight threshold.
     thresholds : bool, default True
-        Whether to enforce weight thresholds. If True, this is done after
+        Whether to enforce the `smallest_allowed_weight` and
+        `largest_allowed_weight` thresholds. If True, this is done after
         calling the subclass's :meth:`resample` method.
 
     Attributes
