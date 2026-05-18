@@ -20,6 +20,7 @@ __all__ = [
     'Sink',
     'Propagator',
     'OpenMMPropagator',
+    'Amberropagator'
     'Plugin',
     'TrajectoryTree',
     'Trajectory',
@@ -58,6 +59,13 @@ try:
     from .core.propagators._openmm import OpenMMPropagator
 except ImportError:
     pass
+
+try:
+    from .core.propagators._amber import Amberropagator
+except ImportError:
+    pass
+
+
 
 from .analysis import TrajectoryTree, Trajectory
 
