@@ -6,7 +6,7 @@ class Plugin:
     ----------
     priority : int, default 0
         Relative priority of the plugin. If two plugins both implement the same
-        method, the plugin with the lower value of `priority` (which is used as
+        hook, the plugin with the lower value of `priority` (which is used as
         a sort key) will be run first.
 
     Attributes
