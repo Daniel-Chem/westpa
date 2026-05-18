@@ -1,5 +1,6 @@
 import copy
 import functools
+import io
 import itertools
 import logging
 import math
@@ -55,9 +56,8 @@ class Simulation:
 
     Parameters
     ----------
-    datafile : str or io.BufferedIOBase, default 'west.h5'
-        HDF5 file used to store simulation data. Either a pathname or a binary
-        stream (e.g., a ``BytesIO`` object) may be provided.
+    datafile : str or io.BytesIO, default 'west.h5'
+        HDF5 file used to store simulation data.
     propagator : :class:`Propagator`, optional
         Routine for propagating trajectories forward in time. Required when
         using the :meth:`run` method to run the simulation. If `propagator` is
@@ -167,7 +167,14 @@ class Simulation:
         for plugin in plugins or []:
             self.add_plugin(plugin)
 
-        if os.path.exists(self.datafile):
+        initialized = False
+        if isinstance(datafile, io.BytesIO):
+            if datafile.getbuffer().nbytes > 0:
+                initialized = True
+        elif os.path.exists(datafile):
+            initialized = True
+
+        if initialized:
             logger.debug('opening existing simulation')
             self._data_manager.open_backing()
             self._n_iter = self._data_manager.current_iteration
@@ -285,9 +292,8 @@ class Simulation:
             Weight to assign each trajectory. Defaults to a uniform distribution.
 
         """
-        if os.path.exists(self.datafile):
-            reason = f'file {self.datafile!r} already exists'
-            raise FileExistsError(f"can't initialize the simulation: {reason}")
+        if self.initialized:
+            raise RuntimeError("can't initialize the simulation: already initialized")
 
         self._data_manager.prepare_backing()
         logger.info(f'Created HDF5 file {self.datafile!r}')

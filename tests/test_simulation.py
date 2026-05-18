@@ -300,10 +300,10 @@ class TestInitialize:
         # The segment with weight=2 gets 2/4 = 0.5
         assert pytest.approx(max(weights)) == 0.5
 
-    def test_initialize_file_exists_raises(self, sim):
+    def test_initialize_runtime_raises(self, sim):
         state = westpa.State(coord=[0.5])
         sim.initialize(state)
-        with pytest.raises(FileExistsError, match="can't initialize the simulation"):
+        with pytest.raises(RuntimeError, match="can't initialize the simulation"):
             sim.initialize(state)
 
     def test_initialize_weights_length_mismatch(self, sim):
@@ -435,7 +435,7 @@ class TestRun:
             datafile=datafile,
             propagator=propagator,
         )
-        with pytest.raises(FileExistsError):
+        with pytest.raises(RuntimeError, match="already initialized"):
             sim2.initialize(westpa.State(coord=[0.0]))
         sim2.run(n_iters=2)
         assert sim2.current_iteration == 5
