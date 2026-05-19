@@ -1,7 +1,6 @@
 import copy
 import logging
 import os
-import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -167,11 +166,11 @@ class OpenMMPropagator(Propagator):
         self._reports.append(report)
 
     def propagate(self, segment):
-        start_time = time.time()
-
-        integrator = copy.copy(self.integrator)  # copy to avoid 'already bound to Context' error
-
         rng = np.random.default_rng(self.get_child_seed(segment))
+
+        # copy to avoid 'already bound to Context' error
+        integrator = copy.copy(self.integrator)
+
         if hasattr(integrator, 'setRandomNumberSeed'):
             integrator.setRandomNumberSeed(rng.integers(low=1, high=2**31))
         for force in self.system.getForces():
@@ -195,14 +194,10 @@ class OpenMMPropagator(Propagator):
             reporter = report.reporter_type(file, report.report_interval, **report.options)
             simulation.reporters.append(reporter)
 
-        try:
-            simulation.step(self.steps)
-        except openmm.OpenMMException as e:
-            segment.mark_as_failed(str(e))
-        else:
-            final_state_file = os.path.join(segment_dir, self.final_state_filename)
-            simulation.saveState(final_state_file)
-            segment.final_state = State(file=final_state_file)
-            segment.walltime = time.time() - start_time
+        simulation.step(self.steps)
+
+        final_state_file = os.path.join(segment_dir, self.final_state_filename)
+        simulation.saveState(final_state_file)
+        segment.final_state = State(file=final_state_file)
 
         return segment

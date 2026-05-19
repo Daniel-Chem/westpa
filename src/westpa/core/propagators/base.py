@@ -1,5 +1,7 @@
 import logging
 import secrets
+import time
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -123,4 +125,19 @@ class Propagator:
         return map(self.propagate, segments)
 
     def __call__(self, segments):
-        return list(self.propagate_block(segments))
+        # call propagate() if it is overridden; else call propagate_block()
+        if type(self).propagate is not Propagator.propagate:
+            for segment in segments:
+                start_walltime = time.perf_counter()
+                start_cputime = time.process_time()
+                try:
+                    segment = self.propagate(segment)
+                except Exception:
+                    segment.mark_as_failed(traceback.format_exc())
+                else:
+                    segment.walltime = time.perf_counter() - start_walltime
+                    segment.cputime = time.process_time() - start_cputime
+        else:
+            segments = tuple(self.propagate_block(segments))
+
+        return segments
