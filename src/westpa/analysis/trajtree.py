@@ -272,9 +272,8 @@ class TrajectoryTree:
                 break
             segments.append(parent)
             segment = parent
-        segments.reverse()
 
-        return Trajectory(segments)
+        return Trajectory(reversed(segments))
 
     def __repr__(self):
         return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
@@ -285,7 +284,7 @@ class Trajectory(Sequence):
 
     Parameters
     ----------
-    segments : sequence of :class:`Segment`
+    segments : iterable of :class:`Segment`
         Segments comprising the trajectory.
 
     Attributes
@@ -298,7 +297,7 @@ class Trajectory(Sequence):
     """
 
     def __init__(self, segments):
-        self.segments = segments
+        self.segments = tuple(segments)
 
     def __len__(self):
         return len(self.segments)
@@ -306,26 +305,27 @@ class Trajectory(Sequence):
     def __getitem__(self, index):
         return self.segments[index]
 
+    @property
     def states(self):
         """Sequence of states visited by the trajectory."""
-        for segment in self:
+        for segment in self.segments:
             yield segment.initial_state
-        yield segment.final_state
+        yield self.segments[-1].final_state
 
     @property
     def initial_state(self):
         """Initial state of the trajectory."""
-        return self[0].initial_state
+        return self.segments[0].initial_state
 
     @property
     def final_state(self):
         """Final state of the trajectory."""
-        return self[-1].final_state
+        return self.segments[-1].final_state
 
     @property
     def iter_range(self):
         """Range of iterations spanned by the trajectory."""
-        return range(self[0].n_iter, self[-1].n_iter + 1)
+        return range(self.segments[0].n_iter, self.segments[-1].n_iter + 1)
 
     def __repr__(self):
         return f'<{type(self).__name__} with {len(self)} segments at {hex(id(self))}>'
