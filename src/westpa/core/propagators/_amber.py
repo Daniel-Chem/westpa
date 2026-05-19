@@ -1,121 +1,90 @@
 import logging
 import subprocess 
-import copy
-import logging
-import os
-import time
-from dataclasses import dataclass
-
-import numpy as np
-import openmm.app
-
 from .base import Propagator
 from westpa.core.state import State
+import time
+import os
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SEGMENT_DIR_TEMPLATE = 'traj_segs/{n_iter:06d}/{seg_id:06d}'
 DEFAULT_FINAL_STATE_FILENAME = 'final_state.xml'
 
-class Amberropagator(Propagator):
+class AmberPropagator(Propagator):
     """
     Work in progress Amber propagation engine 
-
     """
 
     def __init__(
         self,
         mdin,
+        prmtop,
         inpcrd,
+        restart,
         mdcrd,
-        mdout=None,
-        mdinfo=None,
-        prmtop=None,
-        refc=None,
-        mtmd=None,
-        mdcrt=None,
-        inptraj=None,
-        mdvel=None,
-        mdfrc=None,
-        mden=None,
-        restrt=None,
-        inpdip=None,
-        rstdip=None,
-        cpin=None,
-        cpestrt=None,
-        cpout=None,
-        cein=None,
-        ceresrst=None,
-        cecout=None,
-        evbin=None,
-        suffix=None,
-        segment_dir_template=None,
-        final_state_filename=None,
-        root_seed=None,
+        amber_flags=None,
+        pmemd=True,
+        sander=False,
+        segment_dir_template=DEFAULT_SEGMENT_DIR_TEMPLATE,
+        final_state_filename=DEFAULT_FINAL_STATE_FILENAME,
         **kwargs
     ):
         super().__init__()
-        self.mdin = mdin
-        self.mdout = mdout
-        self.mdinfo = mdinfo
+        self.mdin =mdin
         self.prmtop = prmtop
-        self.inpcrd = inpcrd
-        self.refc = refc
-        self.mtmd = mtmd
-        self.mdcrt = mdcrt
-        self.inptraj = inptraj
-        self.mdvel = mdvel
-        self.mdfrc = mdfrc
-        self.mden = mden
-        self.restrt = restrt
-        self.inpdip = inpdip
-        self.rstdip = rstdip
-        self.cpin = cpin
-        self.cpestrt = cpestrt
-        self.cpout = cpout
-        self.cein = cein
-        self.ceresrst = ceresrst
-        self.cecout = cecout
-        self.evbin = evbin
-        self.suffix = suffix
-        #!Figure out if **kwargs
+        self.restart = restart
+        self.mdcrd = mdcrd
+        self.amber_flags = amber_flags
+        
+        self.pmemd = pmemd
+        self.sander = sander
+        self.segment_dir_template = segment_dir_template
+        self.final_state_filename = final_state_filename
+        self.validate_inputs()
 
-        #self.platform_properties = platform_properties
-        #self.segment_dir_template = os.path.abspath(segment_dir_template or DEFAULT_SEGMENT_DIR_TEMPLATE)
-        #self.final_state_filename = final_state_filename or DEFAULT_FINAL_STATE_FILENAME
-        #self._reports = []
+    def validate_inputs(self):
+        if self.pmemd and self.sander:
+            raise ValueError("Cannot specify both pmemd and sander as True. Please choose one.")
+        if not self.pmemd and not self.sander:
+            raise ValueError("Must specify either pmemd or sander as True. Please choose one.")
 
+    def construct_command(self): #TODO: Need to pass the input flags explicitly not just the dictionary 
+        #!segment check the init point type NEWTRAJ (possibly one flag for both)
+        #! check irest flag 
+        if self.pmemd:
+            cmd=["pmemd.cuda"]
+        elif self.sander:
+            cmd=["sander"]
+        if self.amber_flags:
+            for flag_key, flag_value in self.amber_flags.items():
+                if flag_value is None:
+                    continue    
+                if len(flag_key) == 1:
+                    cmd.append(f"-{flag_key} {flag_value}")
+                else:
+                    cmd.append(f"--{flag_key} {flag_value}")
+        return cmd
 
-    def propagate(self,segment):
+    def propagate(self,segment): #!would need to list all gpus and work manager index so taht there is no overlap within runseg
         start_time = time.time()
-        #Command construction
-        input_flags=vars(self)
-        cmd=["pmemd.cuda"]
-        for k, v in input_flags.items():
-            
-            if v is None:
-                #print(k) #all the ones that are none
-                continue
 
-            if k == "_root_seed":
-                continue
-            if k == "_block_size":
-                continue
-            
-            cmd.append(f"--{k} {v}")
-        #print(cmd)
+        cmd=self.construct_command()
 
-        #command execution
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        #print(f"Executing command: {cmd} ")
+        
+        #Execute the command and capture output, handling exceptions
+        try:
+            res = subprocess.run(, capture_output=True, text=True) #!need to pass the variables here for amber to not use redudnat gpu usage
+        except Exception as e:
+            segment.mark_as_failed(str(e))
+            return segment
 
-        state=segment.initial_state.file #file in storage that md will pick up from #!This is specified with input flag, c 
+
         segment_dir = self.segment_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id)
         os.makedirs(segment_dir)
-
-        final_state_file = os.path.join(segment_dir, self.mdcrd) #aka seg.nc 
+        final_state_file = os.path.join(segment_dir,self.restart) 
         segment.final_state = State(file=final_state_file)
         segment.walltime = time.time() - start_time #done
-
         return segment
 
 

@@ -61,7 +61,7 @@ except ImportError:
     pass
 
 try:
-    from .core.propagators._amber import Amberropagator
+    from .core.propagators._amber import AmberPropagator
 except ImportError:
     pass
 
