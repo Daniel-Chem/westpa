@@ -202,24 +202,38 @@ class TrajectoryTree:
         """
         return self.data_manager.get_parent_ids(n_iter, seg_ids)
 
-    def parent(self, segment):
-        """Return the parent of a segment.
+    def parent(self, segment, n=1):
+        """Return the `n`-th order parent of a segment.
 
         Parameters
         ----------
         segment : :class:`Segment`
             Segment to find the parent of.
+        n : int, default 1
+            Number of iterations by which the parent is removed from `segment`
+            (1 = direct parent, 2 = grandparent, etc.).
 
         Returns
         -------
         parent : :class:`Segment` or None
-            Parent of the given segment, or None if the segment has no parent.
+            `n`-th order parent of the given segment, or None if the segment
+            has no parent `n` iterations back.
 
         """
+        if not isinstance(n, int):
+            raise TypeError("'n' must be an integer")
+        if n < 1:
+            raise ValueError("'n' must be greater than or equal to 1")
+
         if segment.initpoint_type == segment.InitPointType.NEWTRAJ:
             return None
+
+        segment = self.get_segment(segment.n_iter - 1, segment.parent_id)
+
+        if n == 1:
+            return segment
         else:
-            return self.get_segment(segment.n_iter - 1, segment.parent_id)
+            return self.parent(segment, n - 1)
 
     def children(self, segment):
         """Return the children of a segment.
