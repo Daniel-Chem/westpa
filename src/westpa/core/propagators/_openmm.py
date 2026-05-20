@@ -12,10 +12,6 @@ from westpa.core.state import State
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_SEGMENT_DIR_TEMPLATE = 'traj_segs/{n_iter:06d}/{seg_id:06d}'
-DEFAULT_FINAL_STATE_FILENAME = 'final_state.xml'
-
-
 @dataclass
 class Report:
     reporter_type: type
@@ -121,6 +117,8 @@ class OpenMMPropagator(Propagator):
 
     """
 
+    DEFAULT_FINAL_STATE_FILENAME = 'final_state.xml'
+
     def __init__(
         self,
         topology,
@@ -141,8 +139,8 @@ class OpenMMPropagator(Propagator):
         self.steps = steps
         self.platform = platform
         self.platform_properties = platform_properties
-        self.segment_dir_template = os.path.abspath(segment_dir_template or DEFAULT_SEGMENT_DIR_TEMPLATE)
-        self.final_state_filename = final_state_filename or DEFAULT_FINAL_STATE_FILENAME
+        self.segment_dir_template = os.path.abspath(segment_dir_template or self.DEFAULT_SEGMENT_DIR_TEMPLATE)
+        self.final_state_filename = final_state_filename or self.DEFAULT_FINAL_STATE_FILENAME
         self._reports = []
 
     def add_reporter(self, reporter_type, filename, report_interval, options=None):

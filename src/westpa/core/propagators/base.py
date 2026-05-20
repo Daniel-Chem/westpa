@@ -27,6 +27,8 @@ class Propagator:
 
     """
 
+    DEFAULT_SEGMENT_DIR_TEMPLATE = 'traj_segs/{n_iter:06d}/{seg_id:06d}'
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         a = cls.propagate is not Propagator.propagate
