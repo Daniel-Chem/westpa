@@ -164,7 +164,10 @@ class Bin(MutableSet):
         self._segments = SortedSet(segments, key=operator.attrgetter('weight'))
 
     def split(self, segment, m=2):
-        """Split a segment into two or more copies, updating the bin contents.
+        """Split a segment into two or more copies.
+
+        This method modifies the bin by replacing the given `segment` with the
+        returned `new_segments`.
 
         Parameters
         ----------
@@ -193,8 +196,11 @@ class Bin(MutableSet):
         return new_segments
 
     def merge(self, segments, cumulative_weight=None, rng=None):
-        """Merge multiple segments into a single segment, updating the bin contents.
-        The surviving walker is chosen randomly according to weight.
+        """Merge multiple segments into a single segment. The surviving walker
+        is chosen randomly according to weight.
+
+        This method modifies the bin by replacing the given `segments` with the
+        returned `new_segment`.
 
         Parameters
         ----------
