@@ -58,7 +58,7 @@ class Simulation:
     ----------
     datafile : str or io.BytesIO, default 'west.h5'
         HDF5 file used to store simulation data.
-    propagator : :class:`Propagator`, optional
+    propagator : :class:`Propagator` or None
         Routine for propagating trajectories forward in time. Required when
         using the :meth:`run` method to run the simulation. If `propagator` is
         None, the simulation may be run in "WE-only" mode using the
@@ -127,7 +127,8 @@ class Simulation:
     def __init__(
         self,
         datafile='west.h5',
-        propagator=None,
+        *,
+        propagator,
         pcoord_calculator=None,
         bin_mapper=None,
         bin_target_counts=1,
