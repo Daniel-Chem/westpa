@@ -1,5 +1,5 @@
-import itertools
 from collections.abc import Sequence
+from itertools import chain
 from typing import NamedTuple
 
 import networkx as nx
@@ -277,11 +277,10 @@ class TrajectoryTree:
         node = Node(segment.n_iter, segment.seg_id)
 
         for _ in range(n):
-            predecessors = self._graph.predecessors(node)
-            try:
-                node = next(predecessors)
-            except StopIteration:
+            predecessor = next(self._graph.predecessors(node), None)
+            if predecessor is None:
                 return None
+            node = predecessor
 
         return self.get_segment(node.n_iter, node.seg_id)
 
@@ -308,24 +307,15 @@ class TrajectoryTree:
         if n < 1:
             raise ValueError("'n' must be greater than or equal to 1")
 
-        if segment.endpoint_type != segment.EndPointType.CONTINUES:
-            return []
-        if segment.n_iter == self.n_iters:
-            return []
+        nodes = [Node(segment.n_iter, segment.seg_id)]
 
-        parent_ids = self.get_parent_ids(segment.n_iter + 1)
-        seg_ids = []
-        for seg_id, parent_id in enumerate(parent_ids):
-            if parent_id == segment.seg_id:
-                seg_ids.append(seg_id)
+        for _ in range(n):
+            successors = list(chain.from_iterable(map(self._graph.successors, nodes)))
+            if not successors:
+                return []
+            nodes = successors
 
-        children = self.get_segments(segment.n_iter + 1, seg_ids)
-
-        if n == 1:
-            return children
-        else:
-            lists = (self.children(child, n - 1) for child in children)
-            return list(itertools.chain.from_iterable(lists))
+        return self.get_segments(nodes[0].n_iter, [node.seg_id for node in nodes])
 
     def trace(self, segment, maxlen=None):
         """Trace the lineage of a segment.
