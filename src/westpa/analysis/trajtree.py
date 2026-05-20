@@ -1,7 +1,15 @@
 import itertools
 from collections.abc import Sequence
+from typing import NamedTuple
+
+import networkx as nx
 
 from ..core._data_manager import DataManager  # noqa
+
+
+class Node(NamedTuple):
+    n_iter: int
+    seg_id: int
 
 
 class TrajectoryTree:
@@ -93,6 +101,22 @@ class TrajectoryTree:
         self._load_pcoords = None
         self.load_pcoords = load_pcoords
 
+        # Construct a DiGraph to allow traversal without hitting the HDF5 file.
+        # Nodes are (n_iter, seg_id) pairs. Edges point from parent to child.
+        graph = nx.DiGraph()
+        for n_iter in range(1, self.n_iters + 1):
+            nodes = [Node(n_iter, seg_id) for seg_id in range(self.segment_count(n_iter))]
+            graph.add_nodes_from(nodes, subset=n_iter)
+            if n_iter == 1:
+                continue
+            parent_ids = self.data_manager.get_all_parent_ids(n_iter).tolist()
+            for node, parent_id in zip(nodes, parent_ids):
+                if parent_id < 0:
+                    return
+                graph.add_edge(Node(n_iter - 1, parent_id), node)
+
+        self._graph = graph
+
     def close(self):
         """Close the HDF5 file."""
         self.data_manager.close_backing()
@@ -129,7 +153,7 @@ class TrajectoryTree:
         if not isinstance(n_iter, int):
             raise TypeError("'n_iter' must be an integer")
         if n_iter not in range(1, iter_stop := self.data_manager.current_iteration):
-            raise ValueError(f'iteration number must be in range(1, {iter_stop})')
+            raise ValueError(f"'n_iter' must be in range(1, {iter_stop})")
         return self.data_manager.get_iter_group(n_iter)
 
     def segment_count(self, n_iter=None):
@@ -151,10 +175,9 @@ class TrajectoryTree:
 
         """
         if n_iter is None:
-            return sum(self.segment_count(n_iter) for n_iter in range(1, self.n_iters + 1))
+            return self._history_graph.number_of_nodes()
         else:
-            iter_group = self._get_iter_group(n_iter)
-            return iter_group['seg_index'].shape[0]
+            return self._get_iter_group(n_iter)['seg_index'].shape[0]
 
     def get_segments(self, n_iter, seg_ids=None):
         """Retrieve multiple segments from a given iteration.
@@ -173,13 +196,12 @@ class TrajectoryTree:
             Selected segments.
 
         """
-        n_total_segments = self.segment_count(n_iter)
-
         if seg_ids is not None:
             if not all(isinstance(seg_id, int) for seg_id in seg_ids):
                 raise TypeError("'seg_ids' must be a list of integers")
+            n_segments = self.segment_count(n_iter)
             for seg_id in seg_ids:
-                if seg_id not in range(n_total_segments):
+                if seg_id not in range(n_segments):
                     raise ValueError(f'segment index {seg_id} out of range for iteration {n_iter}')
 
         segments = self.data_manager.get_segments(n_iter, seg_ids, load_pcoords=self.load_pcoords)
@@ -252,15 +274,16 @@ class TrajectoryTree:
         if n < 1:
             raise ValueError("'n' must be greater than or equal to 1")
 
-        if segment.initpoint_type == segment.InitPointType.NEWTRAJ:
-            return None
+        node = Node(segment.n_iter, segment.seg_id)
 
-        parent = self.get_segment(segment.n_iter - 1, segment.parent_id)
+        for _ in range(n):
+            predecessors = self._graph.predecessors(node)
+            try:
+                node = next(predecessors)
+            except StopIteration:
+                return None
 
-        if n == 1:
-            return parent
-        else:
-            return self.parent(parent, n - 1)
+        return self.get_segment(node.n_iter, node.seg_id)
 
     def children(self, segment, n=1):
         """Return the `n`-th level children of a segment.
@@ -301,7 +324,8 @@ class TrajectoryTree:
         if n == 1:
             return children
         else:
-            return list(itertools.chain(*(self.children(child, n - 1) for child in children)))
+            lists = (self.children(child, n - 1) for child in children)
+            return list(itertools.chain.from_iterable(lists))
 
     def trace(self, segment, maxlen=None):
         """Trace the lineage of a segment.
@@ -311,11 +335,11 @@ class TrajectoryTree:
         segment : :class:`Segment`
             Segment to trace.
         maxlen : int, optional
-            Maximum number of segments in the returned trace.
+            Maximum number of segments in the returned trajectory trace.
 
         Returns
         -------
-        traj : sequence of :class:`Segment`
+        traj : :class:`Trajectory`
             Trajectory leading up to and including `segment`.
 
         """
