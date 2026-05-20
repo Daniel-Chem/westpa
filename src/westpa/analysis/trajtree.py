@@ -1,3 +1,4 @@
+import itertools
 from collections.abc import Sequence
 
 from ..core._data_manager import DataManager  # noqa
@@ -22,6 +23,7 @@ class TrajectoryTree:
 
     Methods
     -------
+    segment_count
     get_segment
     get_segments
     get_parent_ids
@@ -91,6 +93,17 @@ class TrajectoryTree:
         self._load_pcoords = None
         self.load_pcoords = load_pcoords
 
+    def close(self):
+        """Close the HDF5 file."""
+        self.data_manager.close_backing()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
     @property
     def datafile(self):
         """HDF5 data file."""
@@ -112,16 +125,35 @@ class TrajectoryTree:
         """Number of iterations (layers) in the trajectory tree."""
         return self.data_manager.current_iteration - 1
 
-    def close(self):
-        """Close the HDF5 file."""
-        self.data_manager.close_backing()
+    def _get_iter_group(self, n_iter):
+        if not isinstance(n_iter, int):
+            raise TypeError("'n_iter' must be an integer")
+        if n_iter not in range(1, iter_stop := self.data_manager.current_iteration):
+            raise ValueError(f'iteration number must be in range(1, {iter_stop})')
+        return self.data_manager.get_iter_group(n_iter)
 
-    def __enter__(self):
-        return self
+    def segment_count(self, n_iter=None):
+        """Return the total number of segments in (a given iteration of) the trajectory tree.
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        return False
+        Parameters
+        ----------
+        n_iter : int, optional
+            Iteration number. If provided, the total number of segments in the
+            given iteration will be returned. If None (the default), the total
+            number of segments in the trajectory tree will be returned.
+
+        Returns
+        -------
+        n_segments : int
+            Total number of segments in the given iteration if `n_iter` was
+            provided; else the total number of segments in the trajectory tree.
+
+        """
+        if n_iter is None:
+            return sum(self.segment_count(n_iter) for n_iter in range(1, self.n_iters + 1))
+        else:
+            iter_group = self._get_iter_group(n_iter)
+            return iter_group['seg_index'].shape[0]
 
     def get_segments(self, n_iter, seg_ids=None):
         """Retrieve multiple segments from a given iteration.
@@ -140,13 +172,7 @@ class TrajectoryTree:
             Selected segments.
 
         """
-        if not isinstance(n_iter, int):
-            raise TypeError("'n_iter' must be an integer")
-        if n_iter not in range(1, iter_stop := self.data_manager.current_iteration):
-            raise ValueError(f'iteration number must be in range(1, {iter_stop})')
-
-        iter_group = self.data_manager.get_iter_group(n_iter)
-        n_total_segments = iter_group['seg_index'].shape[0]
+        n_total_segments = self.segment_count(n_iter)
 
         if seg_ids is not None:
             if not all(isinstance(seg_id, int) for seg_id in seg_ids):
@@ -203,7 +229,7 @@ class TrajectoryTree:
         return self.data_manager.get_parent_ids(n_iter, seg_ids)
 
     def parent(self, segment, n=1):
-        """Return the `n`-th order parent of a segment.
+        """Return the `n`-th level parent of a segment.
 
         Parameters
         ----------
@@ -216,8 +242,8 @@ class TrajectoryTree:
         Returns
         -------
         parent : :class:`Segment` or None
-            `n`-th order parent of the given segment, or None if the segment
-            has no parent `n` iterations back.
+            `n`-th level parent of the given segment, or None if the segment
+            has no `n`-th level parent.
 
         """
         if not isinstance(n, int):
@@ -228,35 +254,53 @@ class TrajectoryTree:
         if segment.initpoint_type == segment.InitPointType.NEWTRAJ:
             return None
 
-        segment = self.get_segment(segment.n_iter - 1, segment.parent_id)
+        parent = self.get_segment(segment.n_iter - 1, segment.parent_id)
 
         if n == 1:
-            return segment
+            return parent
         else:
-            return self.parent(segment, n - 1)
+            return self.parent(parent, n - 1)
 
-    def children(self, segment):
-        """Return the children of a segment.
+    def children(self, segment, n=1):
+        """Return the `n`-th level children of a segment.
 
         Parameters
         ----------
         segment : :class:`Segment`
             Segment to find the children of.
+        n : int, default 1
+            Number of iterations by which the children are removed from
+            `segment` (1 = direct children, 2 = grandchildren, etc.).
 
         Returns
         -------
         children : list of :class:`Segment`
-            Children of the given segment.
+            `n`-th level children of the given segment (empty if the
+            segment has no `n`-th level children).
 
         """
-        parent_ids = self.get_parent_ids(segment.n_iter + 1)
+        if not isinstance(n, int):
+            raise TypeError("'n' must be an integer")
+        if n < 1:
+            raise ValueError("'n' must be greater than or equal to 1")
 
+        if segment.endpoint_type != segment.EndPointType.CONTINUES:
+            return []
+        if segment.n_iter == self.n_iters:
+            return []
+
+        parent_ids = self.get_parent_ids(segment.n_iter + 1)
         seg_ids = []
         for seg_id, parent_id in enumerate(parent_ids):
             if parent_id == segment.seg_id:
                 seg_ids.append(seg_id)
 
-        return self.get_segments(segment.n_iter + 1, seg_ids)
+        children = self.get_segments(segment.n_iter + 1, seg_ids)
+
+        if n == 1:
+            return children
+        else:
+            return list(itertools.chain(*(self.children(child, n - 1) for child in children)))
 
     def trace(self, segment, maxlen=None):
         """Trace the lineage of a segment.
