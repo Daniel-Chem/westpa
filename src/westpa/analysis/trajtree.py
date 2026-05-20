@@ -133,8 +133,8 @@ class TrajectoryTree:
         return self.data_manager.get_iter_group(n_iter)
 
     def segment_count(self, n_iter=None):
-        """Return the total number of segments in a given iteration or over all
-        the iterations.
+        """Return the total number of segments in a given iteration or in the
+        entire trajectory tree.
 
         Parameters
         ----------
