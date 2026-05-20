@@ -133,7 +133,8 @@ class TrajectoryTree:
         return self.data_manager.get_iter_group(n_iter)
 
     def segment_count(self, n_iter=None):
-        """Return the total number of segments in (a given iteration of) the trajectory tree.
+        """Return the total number of segments in a given iteration or over all
+        the iterations.
 
         Parameters
         ----------
@@ -209,7 +210,7 @@ class TrajectoryTree:
         return self.get_segments(n_iter, seg_ids=[seg_id])[0]
 
     def get_parent_ids(self, n_iter, seg_ids=None):
-        """Return the parent indices of selected segments from a given iteration.
+        """Return the parent indices of all or selected segments from a given iteration.
 
         Parameters
         ----------
