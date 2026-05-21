@@ -56,8 +56,9 @@ class Simulation:
 
     Parameters
     ----------
-    datafile : str or io.BytesIO, default 'west.h5'
-        HDF5 file used to store simulation data.
+    datafile : str or io.BytesIO
+        HDF5 file used to store simulation data. Either a pathname (e.g.,
+        ``'west.h5'``) or an in-memory stream may be provided.
     propagator : :class:`Propagator` or None
         Routine for propagating trajectories forward in time. Required when
         using the :meth:`run` method to run the simulation. If `propagator` is
@@ -126,8 +127,7 @@ class Simulation:
 
     def __init__(
         self,
-        datafile='west.h5',
-        *,
+        datafile,
         propagator,
         pcoord_calculator=None,
         bin_mapper=None,
