@@ -20,7 +20,7 @@ class TrivialPropagator(westpa.Propagator):
         super().__init__(**kwargs)
         self.delta = delta
 
-    def propagate(self, segment):
+    def propagate(self, segment, rng):
         coord = segment.initial_state.coord
         segment.final_state = westpa.State(coord=coord + self.delta)
         return segment

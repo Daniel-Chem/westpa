@@ -3,7 +3,6 @@ import logging
 import os
 from dataclasses import dataclass
 
-import numpy as np
 import openmm.app
 
 from .base import Propagator
@@ -44,17 +43,11 @@ class OpenMMPropagator(Propagator):
         Platform to use for calculations.
     platform_properties : Mapping[str, str], optional
         Platform-specific properties to pass to the simulation context.
-    segment_dir_template : str, optional
-        Template string specifying the directory in which to store output for a
-        given segment. The string must contain ``{n_iter}`` and ``{seg_id}``
-        replacement fields. If a relative path is provided, it is assumed to be
-        relative to the current working directory. Defaults to
-        ``'traj_segs/{n_iter:06d}/{seg_id:06d}'``.
     final_state_filename : str, optional
         Name of the XML file used to store the final state of a segment.
         Defaults to ``'final_state.xml'``.
-    root_seed, block_size
-        See :class:`~westpa.Propagator` class documentation for details.
+    **kwargs
+        Arguments to pass to the :class:`Propagator` base class constructor.
 
     Examples
     --------
@@ -127,19 +120,16 @@ class OpenMMPropagator(Propagator):
         steps,
         platform=None,
         platform_properties=None,
-        segment_dir_template=None,
         final_state_filename=None,
-        root_seed=None,
-        block_size=None,
+        **kwargs,
     ):
-        super().__init__(root_seed=root_seed, block_size=block_size)
+        super().__init__(**kwargs)
         self.topology = topology
         self.system = system
         self.integrator = integrator
         self.steps = steps
         self.platform = platform
         self.platform_properties = platform_properties
-        self.segment_dir_template = os.path.abspath(segment_dir_template or self.DEFAULT_SEGMENT_DIR_TEMPLATE)
         self.final_state_filename = final_state_filename or self.DEFAULT_FINAL_STATE_FILENAME
         self._reports = []
 
@@ -156,18 +146,15 @@ class OpenMMPropagator(Propagator):
             Name of the file to write output to.
         report_interval : int
             Interval (in time steps) at which to write frames.
-        options : dict[str, Any], optional
-            Optional parameters to pass to the `reporter_type` constructor.
+        options : Mapping[str, Any], optional
+            Optional arguments to pass to the `reporter_type` constructor.
 
         """
         report = Report(reporter_type, filename, report_interval, options or {})
         self._reports.append(report)
 
-    def propagate(self, segment):
-        rng = np.random.default_rng(self.get_child_seed(segment))
-
-        # copy to avoid 'already bound to Context' error
-        integrator = copy.copy(self.integrator)
+    def propagate(self, segment, rng):
+        integrator = copy.copy(self.integrator)  # integrators can only bind one context
 
         if hasattr(integrator, 'setRandomNumberSeed'):
             integrator.setRandomNumberSeed(rng.integers(low=1, high=2**31))
@@ -184,8 +171,7 @@ class OpenMMPropagator(Propagator):
             state=segment.initial_state.file,
         )
 
-        segment_dir = self.segment_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id)
-        os.makedirs(segment_dir)
+        segment_dir = self.make_segment_dir(segment)
 
         for report in self._reports:
             file = os.path.join(segment_dir, report.filename)

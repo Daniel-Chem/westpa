@@ -11,4 +11,5 @@ Analyzing a simulation
    :members:
 
 .. autoclass:: westpa.Trajectory
+   :show-inheritance:
    :members:
