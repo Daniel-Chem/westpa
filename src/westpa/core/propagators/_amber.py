@@ -1,5 +1,5 @@
 import logging
-import subprocess 
+import subprocess
 from .base import Propagator
 from westpa.core.state import State
 import time
@@ -12,7 +12,7 @@ DEFAULT_FINAL_STATE_FILENAME = 'final_state.xml'
 
 class AmberPropagator(Propagator):
     """
-    Work in progress Amber propagation engine 
+    Work in progress Amber propagation engine
     """
 
     def __init__(
@@ -35,7 +35,7 @@ class AmberPropagator(Propagator):
         self.restart = restart
         self.mdcrd = mdcrd
         self.amber_flags = amber_flags
-        
+
         self.pmemd = pmemd
         self.sander = sander
         self.segment_dir_template = segment_dir_template
@@ -48,9 +48,9 @@ class AmberPropagator(Propagator):
         if not self.pmemd and not self.sander:
             raise ValueError("Must specify either pmemd or sander as True. Please choose one.")
 
-    def construct_command(self): #TODO: Need to pass the input flags explicitly not just the dictionary 
+    def construct_command(self): #TODO: Need to pass the input flags explicitly not just the dictionary
         #!segment check the init point type NEWTRAJ (possibly one flag for both)
-        #! check irest flag 
+        #! check irest flag
         if self.pmemd:
             cmd=["pmemd.cuda"]
         elif self.sander:
@@ -58,7 +58,7 @@ class AmberPropagator(Propagator):
         if self.amber_flags:
             for flag_key, flag_value in self.amber_flags.items():
                 if flag_value is None:
-                    continue    
+                    continue
                 if len(flag_key) == 1:
                     cmd.append(f"-{flag_key} {flag_value}")
                 else:
@@ -71,7 +71,7 @@ class AmberPropagator(Propagator):
         cmd=self.construct_command()
 
         #print(f"Executing command: {cmd} ")
-        
+
         #Execute the command and capture output, handling exceptions
         try:
             res = subprocess.run(, capture_output=True, text=True) #!need to pass the variables here for amber to not use redudnat gpu usage
@@ -82,7 +82,7 @@ class AmberPropagator(Propagator):
 
         segment_dir = self.segment_dir_template.format(n_iter=segment.n_iter, seg_id=segment.seg_id)
         os.makedirs(segment_dir)
-        final_state_file = os.path.join(segment_dir,self.restart) 
+        final_state_file = os.path.join(segment_dir,self.restart)
         segment.final_state = State(file=final_state_file)
         segment.walltime = time.time() - start_time #done
         return segment
@@ -94,4 +94,3 @@ class AmberPropagator(Propagator):
 
 
 #$PMEMD -O -p parent.prmtop -i prod.in -c parent.rst -o seg.out -inf seg.nfo -l seg.log -x seg.nc -r seg.rst || exit 1
-
