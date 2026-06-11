@@ -456,6 +456,6 @@ class TestDefaultPCoord:
     def test_invalid_state(self, sim):
         state = westpa.State(file='/path/to/state.xml')
         segment = westpa.Segment(final_state=state)
-        message = f"couldn't use default progress coordinate: {state} doesn't have a 'coord' value"
+        message = f"{state} doesn't have a 'coord' value"
         with pytest.raises(ValueError, match=re.escape(message)):
             sim._calculate_pcoords([segment])

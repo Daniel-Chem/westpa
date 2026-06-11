@@ -54,7 +54,7 @@ def requires_initialization(func):
 def default_pcoord(segment):
     state = segment.final_state
     if state.coord is None:
-        raise ValueError(f"couldn't use default progress coordinate: {state} doesn't have a 'coord' value")
+        raise ValueError(f"{state} doesn't have a 'coord' value")
     return state.coord[np.newaxis, :]
 
 
