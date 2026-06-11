@@ -51,6 +51,13 @@ def requires_initialization(func):
     return wrapper
 
 
+def default_pcoord(segment):
+    state = segment.final_state
+    if state.coord is None:
+        raise ValueError(f"couldn't use default progress coordinate: {state} doesn't have a 'coord' value")
+    return state.coord[np.newaxis, :]
+
+
 class Simulation:
     """Interface for initializing and running a weighted ensemble (WE) simulation.
 
@@ -613,9 +620,9 @@ class Simulation:
             for segment in segments:
                 future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
                 futures.add(future)
-        else:  # default: pcoord = final_state.coord
+        else:
             for segment in segments:
-                segment.pcoord = segment.final_state.coord
+                segment.pcoord = default_pcoord(segment)
             self._data_manager.write_pcoords(self._n_iter, segments)
         return futures
 

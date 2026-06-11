@@ -1,9 +1,12 @@
 """Tests for the new Simulation API (westpa.core.simulation)."""
 
+import re
+
 import pytest
 import numpy as np
 import westpa
 
+from westpa.core.simulation import default_pcoord
 from westpa.core.sim_manager import PropagationError
 from westpa.core.binning import NopMapper
 from westpa.work_managers import SerialWorkManager
@@ -439,3 +442,20 @@ class TestRun:
             sim2.initialize(westpa.State(coord=[0.0]))
         sim2.run(n_iters=2)
         assert sim2.current_iteration == 5
+
+
+class TestDefaultPCoord:
+
+    def test_valid_state(self):
+        state = westpa.State(coord=[0.0])
+        segment = westpa.Segment(final_state=state)
+        pcoord = default_pcoord(segment)
+        assert pcoord.shape == (1, 1)
+        assert np.allclose(pcoord, state.coord)
+
+    def test_invalid_state(self, sim):
+        state = westpa.State(file='/path/to/state.xml')
+        segment = westpa.Segment(final_state=state)
+        message = f"couldn't use default progress coordinate: {state} doesn't have a 'coord' value"
+        with pytest.raises(ValueError, match=re.escape(message)):
+            sim._calculate_pcoords([segment])
