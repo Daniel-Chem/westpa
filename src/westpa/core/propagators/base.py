@@ -83,7 +83,11 @@ class Propagator:
 
         if segment_dir_template is None:
             segment_dir_template = self.DEFAULT_SEGMENT_DIR_TEMPLATE
-        segment_dir_template = os.path.abspath(segment_dir_template)
+        else:
+            try:
+                segment_dir_template.format(n_iter=1, seg_id=0)
+            except ValueError:
+                raise
 
         if root_seed is None:
             root_seed = secrets.randbits(128)
@@ -101,7 +105,7 @@ class Propagator:
             raise TypeError("'bit_generator_type' must be a subclass of numpy.random.BitGenerator")
 
         self._block_size = block_size
-        self._segment_dir_template = segment_dir_template
+        self._segment_dir_template = os.path.abspath(segment_dir_template)
         self._root_seed = root_seed
         self._bit_generator_type = bit_generator_type
 
@@ -193,14 +197,12 @@ class Propagator:
             for segment in segments:
                 rng = self._get_rng(segment)
                 start_walltime = time.perf_counter()
-                start_cputime = time.process_time()
                 try:
                     segment = self.propagate(segment, rng)
                 except Exception:
                     segment.mark_as_failed(traceback.format_exc())
                 else:
                     segment.walltime = time.perf_counter() - start_walltime
-                    segment.cputime = time.process_time() - start_cputime
         else:
             rng = self._get_rng(segments[0])
             segments = self.propagate_block(segments, rng)
