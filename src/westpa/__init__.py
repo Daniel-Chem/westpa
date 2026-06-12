@@ -19,6 +19,7 @@ __all__ = [
     'Source',
     'Sink',
     'Propagator',
+    'GromacsPropagator',
     'OpenMMPropagator',
     'Amberropagator' 'Plugin',
     'TrajectoryTree',
@@ -28,6 +29,8 @@ __all__ = [
     'TargetState',
     '_rc',
 ]
+
+import shutil
 
 from .core.state import State
 from .core.segment import Segment
@@ -53,6 +56,9 @@ from .core.resamplers import (
 from .core.simulation import Simulation
 from .core.source_sink import Source, Sink
 from .core.plugins import Plugin
+
+if shutil.which('gmx'):
+    from .core.propagators._gromacs import GromacsPropagator
 
 try:
     from .core.propagators._openmm import OpenMMPropagator
