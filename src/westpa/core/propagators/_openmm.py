@@ -24,10 +24,10 @@ class OpenMMPropagator(Propagator):
 
     To create a :class:`~westpa.State` object compatible with this propagator,
     write an OpenMM State object to an XML file (e.g., ``state.xml``) and pass
-    the absolute path to the `file` parameter::
+    the absolute path to the `file` parameter:
 
-        >>> import westpa
-        >>> state = westpa.State(file='/path/to/state.xml')
+    >>> import westpa
+    >>> state = westpa.State(file='/path/to/state.xml')
 
     Parameters
     ----------
