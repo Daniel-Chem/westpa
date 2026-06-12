@@ -29,10 +29,6 @@ __all__ = [
     '_rc',
 ]
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 from .core.state import State
 from .core.segment import Segment
 from .core.propagators import Propagator
