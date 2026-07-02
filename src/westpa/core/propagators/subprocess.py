@@ -22,11 +22,11 @@ class SubprocessPropagator(Propagator):
     stdout : str or io.TextIOBase, optional
         File or stream to redirect stdout to. If a string is passed, it must
         be a path template containing ``{n_iter}`` and ``{seg_id}`` replacement
-        fields. If None, no output will be captured.
+        fields. If None, no redirection will occur.
     stderr : str or io.TextIOBase, optional
         File or stream to redirect stderr to. If a string is passed, it must
         be a path template containing ``{n_iter}`` and ``{seg_id}`` replacement
-        fields. If None, no output will be captured.
+        fields. If None, no redirection will occur.
     shell : bool, default True
         If True, the string returned by the :meth:`get_command` method will be
         executed through the shell. If False, the string must be the name of a
