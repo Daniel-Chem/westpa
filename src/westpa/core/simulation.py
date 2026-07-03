@@ -7,6 +7,7 @@ import math
 import operator
 import os
 import time
+from collections.abc import Mapping
 from datetime import timedelta
 
 import numpy as np
@@ -72,12 +73,13 @@ class Simulation:
         None, the simulation may be run in "WE-only" mode using the
         :meth:`get_segments`, :meth:`update_segments`, and
         :meth:`next_iteration` methods.
-    pcoord_calculator : Callable[[:class:`Segment`], :class:`Segment`], optional
-        Routine for computing the progress coordinate(s) of a trajectory
-        segment. It should take a propagated segment, set its
-        :attr:`~westpa.Segment.pcoord` attribute, and return the modified
-        segment. If `pcoord_calculator` is None, ``pcoord`` will be set to
-        ``final_state.coord`` (which must have a value in this case).
+    pcoord_calculator : Callable[[:class:`Segment`], array_like] or Callable[[:class:`Segment`], Mapping[str, array_like]], optional
+        Function that computes the progress coordinate(s) for a given
+        trajectory segment. If the function returns a mapping, the ``'pcoord'``
+        item is used as the progress coordinate; other items are stored as
+        auxiliary data. If `pcoord_calculator` is not provided, the default
+        progress coordinate will be used, equivalent to passing
+        ``lambda seg: [seg.final_state.coord]``.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
@@ -615,22 +617,22 @@ class Simulation:
         self._data_manager.finalize_iteration(self._n_iter, self._segments)
 
     def _calculate_pcoords(self, segments):
-        futures = set()
+        future_map = {}
         if self.pcoord_calculator is not None:
             for segment in segments:
                 future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
-                futures.add(future)
+                future_map[future] = segment
         else:
             for segment in segments:
                 segment.pcoord = default_pcoord(segment)
             self._data_manager.write_pcoords(self._n_iter, segments)
-        return futures
+        return future_map
 
     # manages istate generation, propagation, and pcoord calculation tasks
     def _propagate(self):
         istate_futures = set()
         propagator_futures = set()
-        pcoord_futures = set()
+        pcoord_future_map = {}
 
         # partition segments by status
         unprepared_segments = []
@@ -674,11 +676,11 @@ class Simulation:
 
         # dispatch pending pcoord calculation tasks
         if segments := [s for s in complete_segments if s.pcoord is None]:
-            pcoord_futures |= self._calculate_pcoords(segments)
+            pcoord_future_map |= self._calculate_pcoords(segments)
 
         logger.info('Waiting for segments to complete...')
 
-        while futures := istate_futures | propagator_futures | pcoord_futures:
+        while futures := istate_futures | propagator_futures | pcoord_future_map.keys():
             future = self.work_manager.wait_any(futures)
 
             if future in istate_futures:
@@ -708,11 +710,23 @@ class Simulation:
                     self._segments[segment.seg_id] = segment
                 self._data_manager.write_final_states(self._n_iter, segments)
 
-                pcoord_futures |= self._calculate_pcoords(segments)
+                pcoord_future_map |= self._calculate_pcoords(segments)
 
-            elif future in pcoord_futures:
-                pcoord_futures.remove(future)
-                segment = future.get_result()
+            elif future in pcoord_future_map:
+                segment = pcoord_future_map.pop(future)
+                result = future.get_result()
+
+                if isinstance(result, Mapping):
+                    if 'pcoord' not in result:
+                        raise RuntimeError("'pcoord_calculator' return value must have a 'pcoord' key")
+                    for key, value in result.items():
+                        if key == 'pcoord':
+                            segment.pcoord = value
+                        else:
+                            segment.data[key] = value
+                else:
+                    segment.pcoord = result
+
                 self._segments[segment.seg_id] = segment
                 self._data_manager.write_pcoords(self._n_iter, segments=[segment])
 
