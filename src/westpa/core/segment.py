@@ -232,13 +232,7 @@ class Segment:
 
     @property
     def pcoord(self):
-        """Progress coordinate time series.
-
-        The value provided to ``pcoord.setter`` must be a 1-D or 2-D array.
-        If a 1-D array (single frame) is provided, it will be converted to a
-        2-D array (time series) of length 1.
-
-        """
+        """Progress coordinate time series."""
         return self._pcoord
 
     @pcoord.setter
@@ -246,10 +240,8 @@ class Segment:
         value = np.asarray(value)
         if not np.issubdtype(value.dtype, np.number):
             raise TypeError("scalar type of 'pcoord' must be numeric")
-        if value.ndim == 1:
-            value = value[np.newaxis, :]
-        elif value.ndim != 2:
-            raise ValueError("'pcoord' must be a 1-D or 2-D array")
+        if value.ndim != 2:
+            raise ValueError("'pcoord' must be 2-D array")
         self._pcoord = value
 
     @property
