@@ -78,7 +78,7 @@ class Simulation:
         a given trajectory segment. The function should take a :class:`Segment`
         object as input and return either a single
         2-D array or a dictionary of named arrays, one of which is a 2-D array
-        named ``'pcoord'`` (any other arrays are stored as auxiliary data).
+        named ``'pcoord'`` (other arrays are stored as auxiliary data).
         If `pcoord_calculator` is None, the raw coordinates of the segment's
         final state will be used as the progress coordinate, equivalent to passing
         ``lambda seg: seg.final_state.coord[None, :]``.
