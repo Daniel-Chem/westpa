@@ -73,11 +73,12 @@ class Simulation:
         None, the simulation may be run in "WE-only" mode using the
         :meth:`get_segments`, :meth:`update_segments`, and
         :meth:`next_iteration` methods.
-    pcoord_calculator : Callable[[:class:`Segment`], array_like] or Callable[[:class:`Segment`], Mapping[str, array_like]], optional
+    pcoord_calculator : callable, optional
         Function that computes the progress coordinate time series for
-        a given trajectory segment. The function may return either a single
+        a given trajectory segment. The function should take a :class:`Segment`
+        object as input and return either a single
         2-D array or a dictionary of named arrays, one of which is a 2-D array
-        named ``'pcoord'`` (other items are stored as auxiliary data).
+        named ``'pcoord'`` (any other arrays are stored as auxiliary data).
         If `pcoord_calculator` is None, the raw coordinates of the segment's
         final state will be used as the progress coordinate, equivalent to passing
         ``lambda seg: seg.final_state.coord[None, :]``.
