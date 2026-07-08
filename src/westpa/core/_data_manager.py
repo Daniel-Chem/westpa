@@ -312,7 +312,7 @@ class DataManager(WESTDataManager):
 
             dsid.write(msel, fsel, entries)
 
-    def get_segments(self, n_iter=None, seg_ids=None, load_pcoords=True):
+    def get_segments(self, n_iter=None, seg_ids=None, load_pcoords=True, load_auxdata=False):
         segments = super().get_segments(n_iter, seg_ids, load_pcoords=False)
         seg_ids = [s.seg_id for s in segments]
 
@@ -327,5 +327,9 @@ class DataManager(WESTDataManager):
             if load_pcoords and 'pcoord' in iter_group:
                 for segment, row in zip(segments, iter_group['pcoord'][seg_ids]):
                     segment.pcoord = row
+            if load_auxdata and 'auxdata' in iter_group:
+                for dsname, ds in iter_group['auxdata'].items():
+                    for segment, row in zip(segments, ds[seg_ids]):
+                        segment.data[dsname] = row
 
         return segments

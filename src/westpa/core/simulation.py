@@ -74,12 +74,13 @@ class Simulation:
         :meth:`get_segments`, :meth:`update_segments`, and
         :meth:`next_iteration` methods.
     pcoord_calculator : Callable[[:class:`Segment`], array_like] or Callable[[:class:`Segment`], Mapping[str, array_like]], optional
-        Function that computes the progress coordinate(s) for a given
-        trajectory segment. If the function returns a mapping, the ``'pcoord'``
-        item is used as the progress coordinate; other items are stored as
-        auxiliary data. If `pcoord_calculator` is not provided, the default
-        progress coordinate will be used, equivalent to passing
-        ``lambda seg: [seg.final_state.coord]``.
+        Function that computes the progress coordinate time series for
+        a given trajectory segment. The function may return either a single
+        2-D array or a dictionary of named arrays, one of which is a 2-D array
+        named ``'pcoord'`` (other items are stored as auxiliary data).
+        If `pcoord_calculator` is None, the raw coordinates of the segment's
+        final state will be used as the progress coordinate, equivalent to passing
+        ``lambda seg: seg.final_state.coord[None, :]``.
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.

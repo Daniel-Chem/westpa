@@ -1,12 +1,9 @@
 """Tests for the new Simulation API (westpa.core.simulation)."""
 
-import re
-
 import pytest
 import numpy as np
 import westpa
 
-from westpa.core.simulation import default_pcoord
 from westpa.core.sim_manager import PropagationError
 from westpa.core.binning import NopMapper
 from westpa.work_managers import SerialWorkManager
@@ -444,18 +441,54 @@ class TestRun:
         assert sim2.current_iteration == 5
 
 
-class TestDefaultPCoord:
+class TestPCoordCalculator:
 
-    def test_valid_state(self):
-        state = westpa.State(coord=[0.0])
-        segment = westpa.Segment(final_state=state)
-        pcoord = default_pcoord(segment)
-        assert pcoord.shape == (1, 1)
-        assert np.allclose(pcoord, state.coord)
+    def test_default(self, sim):
+        sim.initialize(westpa.State(coord=[0.0]))
+        sim.run(n_iters=1)
 
-    def test_invalid_state(self, sim):
-        state = westpa.State(file='/path/to/state.xml')
-        segment = westpa.Segment(final_state=state)
-        message = f"{state} doesn't have a 'coord' value"
-        with pytest.raises(ValueError, match=re.escape(message)):
-            sim._calculate_pcoords([segment])
+        with westpa.TrajectoryTree(sim.datafile) as trajtree:
+            segment = trajtree.get_segment(1, 0)
+
+        assert segment.pcoord.shape == (1, 1)
+        assert np.allclose(segment.pcoord, segment.final_state.coord)
+
+    def test_without_auxdata(self, datafile, propagator):
+        def pcoord_calculator(segment):
+            return np.expand_dims(-segment.final_state.coord, axis=0)
+
+        sim = westpa.Simulation(
+            datafile=datafile,
+            propagator=propagator,
+            pcoord_calculator=pcoord_calculator,
+        )
+        sim.initialize(westpa.State(coord=[0.0]))
+        sim.run(n_iters=1)
+
+        with westpa.TrajectoryTree(sim.datafile) as trajtree:
+            segment = trajtree.get_segment(1, 0)
+
+        assert segment.pcoord.shape == (1, 1)
+        assert np.allclose(segment.pcoord, -segment.final_state.coord)
+
+    def test_with_auxdata(self, datafile, propagator):
+        def pcoord_calculator(segment):
+            return {
+                'pcoord': np.expand_dims(-segment.final_state.coord, axis=0),
+                'a': [1, 2, 3],
+            }
+
+        sim = westpa.Simulation(
+            datafile=datafile,
+            propagator=propagator,
+            pcoord_calculator=pcoord_calculator,
+        )
+        sim.initialize(westpa.State(coord=[0.0]))
+        sim.run(n_iters=1)
+
+        with westpa.TrajectoryTree(sim.datafile, load_auxdata=True) as trajtree:
+            segment = trajtree.get_segment(1, 0)
+
+        assert segment.pcoord.shape == (1, 1)
+        assert np.allclose(segment.pcoord, -segment.final_state.coord)
+        assert segment.data['a'].tolist() == [1, 2, 3]

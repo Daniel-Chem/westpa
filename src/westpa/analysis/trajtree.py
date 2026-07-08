@@ -94,12 +94,16 @@ class TrajectoryTree:
         self,
         datafile,
         load_pcoords=True,
+        load_auxdata=False,
     ):
         self.data_manager = DataManager(datafile)
         self.data_manager.open_backing(mode='r')
 
         self._load_pcoords = None
+        self._load_auxdata = None
+
         self.load_pcoords = load_pcoords
+        self.load_auxdata = load_auxdata
 
         # Construct a DiGraph to allow traversal without hitting the HDF5 file.
         # Nodes are (n_iter, seg_id) pairs. Edges point from parent to child.
@@ -143,6 +147,17 @@ class TrajectoryTree:
         if not isinstance(value, bool):
             raise TypeError("'load_pcoords' must be True or False")
         self._load_pcoords = value
+
+    @property
+    def load_auxdata(self):
+        """Whether to load auxiliary data."""
+        return self._load_auxdata
+
+    @load_auxdata.setter
+    def load_auxdata(self, value):
+        if not isinstance(value, bool):
+            raise TypeError("'load_auxdata' must be True or False")
+        self._load_auxdata = value
 
     @property
     def n_iters(self):
@@ -204,7 +219,7 @@ class TrajectoryTree:
                 if seg_id not in range(n_segments):
                     raise ValueError(f'segment index {seg_id} out of range for iteration {n_iter}')
 
-        segments = self.data_manager.get_segments(n_iter, seg_ids, load_pcoords=self.load_pcoords)
+        segments = self.data_manager.get_segments(n_iter, seg_ids, self.load_pcoords, self.load_auxdata)
 
         if seg_ids is not None:
             # reorder segments to match order of indices in `seg_ids`
