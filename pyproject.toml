@@ -49,6 +49,7 @@ dependencies = [
     "tables",
     "sortedcontainers",
     "networkx",
+    "pygraphviz >= 2.0.0",
 ]
 
 [project.optional-dependencies]

@@ -1,19 +1,24 @@
 from collections.abc import Sequence
 from itertools import chain
+from operator import attrgetter
 from typing import NamedTuple
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
+import pygraphviz as pgv
 
 from ..core._data_manager import DataManager  # noqa
 
 
-class Node(NamedTuple):
+class SegmentPointer(NamedTuple):
     n_iter: int
     seg_id: int
 
 
 class TrajectoryTree:
-    """Interface for analyzing WE trajectory data.
+    """Interface for analyzing weighted ensemble trajectory data.
 
     Parameters
     ----------
@@ -105,19 +110,24 @@ class TrajectoryTree:
         self.load_pcoords = load_pcoords
         self.load_auxdata = load_auxdata
 
-        # Construct a DiGraph to allow traversal without hitting the HDF5 file.
-        # Nodes are (n_iter, seg_id) pairs. Edges point from parent to child.
         graph = nx.DiGraph()
+
         for n_iter in range(1, self.n_iters + 1):
-            nodes = [Node(n_iter, seg_id) for seg_id in range(self.segment_count(n_iter))]
-            graph.add_nodes_from(nodes, subset=n_iter)
+            seg_ids = range(self.segment_count(n_iter))
+
+            nodes = [SegmentPointer(n_iter, seg_id) for seg_id in seg_ids]
+            weights = self.data_manager.get_weights(n_iter, seg_ids)
+            for node, weight in zip(nodes, weights):
+                graph.add_node(node, subset=n_iter, weight=weight)
+
             if n_iter == 1:
                 continue
+
             parent_ids = self.data_manager.get_all_parent_ids(n_iter).tolist()
             for node, parent_id in zip(nodes, parent_ids):
                 if parent_id < 0:
-                    return
-                graph.add_edge(Node(n_iter - 1, parent_id), node)
+                    continue
+                graph.add_edge(SegmentPointer(n_iter - 1, parent_id), node)
 
         self._graph = graph
 
@@ -190,7 +200,7 @@ class TrajectoryTree:
 
         """
         if n_iter is None:
-            return self._history_graph.number_of_nodes()
+            return self._graph.number_of_nodes()
         else:
             return self._get_iter_group(n_iter)['seg_index'].shape[0]
 
@@ -289,7 +299,7 @@ class TrajectoryTree:
         if n < 1:
             raise ValueError("'n' must be greater than or equal to 1")
 
-        node = Node(segment.n_iter, segment.seg_id)
+        node = SegmentPointer(segment.n_iter, segment.seg_id)
 
         for _ in range(n):
             predecessor = next(self._graph.predecessors(node), None)
@@ -322,7 +332,7 @@ class TrajectoryTree:
         if n < 1:
             raise ValueError("'n' must be greater than or equal to 1")
 
-        nodes = [Node(segment.n_iter, segment.seg_id)]
+        nodes = [SegmentPointer(segment.n_iter, segment.seg_id)]
 
         for _ in range(n):
             successors = list(chain.from_iterable(map(self._graph.successors, nodes)))
@@ -362,6 +372,149 @@ class TrajectoryTree:
             segment = parent
 
         return Trajectory(reversed(segments))
+
+    def to_networkx(self, iter_start=1, iter_stop=None, copy=True):
+        """Return a NetworkX representation of the trajectory tree.
+
+        Parameters
+        ----------
+        iter_start : int, optional
+        iter_stop : int, optional
+        copy : bool, optional
+
+        Returns
+        -------
+        graph : networkx.DiGraph
+            Directed graph in which nodes represent trajectory segments.
+
+        """
+        iter_range = range(iter_start, iter_stop or self.n_iters + 1)
+
+        nodes = (node for node in self._graph if node.n_iter in iter_range)
+        graph = self._graph.subgraph(nodes)
+
+        return graph.copy() if copy else graph
+
+    def to_pygraphviz(self, iter_start=1, iter_stop=None):
+        iter_range = range(iter_start, iter_stop or self.n_iters + 1)
+
+        nodes = (node for node in self._graph if node.n_iter in iter_range)
+        graph = self._graph.subgraph(nodes)
+
+        agraph = pgv.AGraph(directed=True, ordering='out')
+        subgraphs = {}
+        for u, d in graph.nodes(data=True):
+            n_iter = d['subset']
+            if n_iter not in subgraphs:
+                subgraphs[n_iter] = agraph.add_subgraph(rank='same')
+            subgraphs[n_iter].add_node(u, weight=d['weight'])
+        for u, v in graph.edges():
+            agraph.add_edge(u, v)
+
+        return agraph
+
+    def to_matplotlib(self, iter_start=1, iter_stop=None, x_func=None):
+        """Return an interactive visual representation of the trajectory tree.
+
+        Parameters
+        ----------
+        iter_start : int, optional
+        iter_stop : int, optional
+        x_func : callable, optional
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+
+        """
+        fig, ax = plt.subplots()
+
+        ax.set_axis_off()
+
+        iter_range = range(iter_start, iter_stop or self.n_iters + 1)
+
+        nodes = (u for u in self._graph if u.n_iter in iter_range)
+        graph = self._graph.subgraph(nodes)
+
+        x = {}
+        if x_func is not None:
+            nodes = iter(graph)
+            for n_iter in iter_range:
+                for segment in self.get_segments(n_iter):
+                    x[next(nodes)] = x_func(segment)
+        else:
+            agraph = self.to_pygraphviz(iter_start, iter_stop or self.n_iters + 1)
+            agraph.graph_attr['rankdir'] = 'BT'
+            agraph.layout(prog='dot')
+            for u, au in zip(graph, agraph):
+                x[u] = float(au.attr['pos'].split(',')[0])
+
+        default_edge_color = 'slategray'
+
+        edge_artists = {}
+        for u, v in graph.edges():
+            artist, *_ = ax.plot(
+                [x[u], x[v]],
+                [u.n_iter, v.n_iter],
+                c=default_edge_color,
+                linewidth=1,
+                zorder=1,
+            )
+            edge_artists[u, v] = artist
+
+        log_weights = np.log([float(d['weight']) for u, d in graph.nodes(data=True)])
+
+        norm = mpl.colors.Normalize(vmin=log_weights.min(), vmax=log_weights.max())
+        cmap = mpl.colormaps['viridis'].reversed()
+
+        y = list(map(attrgetter('n_iter'), graph.nodes()))
+        c = list(map(cmap, map(norm, log_weights)))
+        node_artist = ax.scatter(list(x.values()), y, c=c, s=3, picker=True)
+
+        highlighted_edge_color = 'fuchsia'
+        highlighted = []
+        nodes_by_index = {ind: node for ind, node in enumerate(graph.nodes())}
+
+        def highlighter(event):
+            if event.artist != node_artist:
+                return
+
+            for artist in highlighted:
+                artist.set_color(default_edge_color)
+
+            if event.mouseevent.button == plt.MouseButton.LEFT:
+                u = nodes_by_index[event.ind[0]]
+                if event.mouseevent.dblclick:
+                    subgraph = graph.subgraph(nx.descendants(graph, u) | {u})
+                else:
+                    subgraph = graph.subgraph(nx.ancestors(graph, u) | {u})
+                for edge in subgraph.edges():
+                    artist = edge_artists[edge]
+                    artist.set_color(highlighted_edge_color)
+                    highlighted.append(artist)
+
+        text = ax.text(0, 0, '')
+        text.set_bbox({'facecolor': 'white', 'edgecolor': default_edge_color})
+        text.set_visible(False)
+
+        def tooltip(event):
+            if event.inaxes != ax:
+                return
+
+            contains, details = node_artist.contains(event)
+            if contains:
+                u = nodes_by_index[details['ind'][0]]
+                text.set_x(x[u])
+                text.set_y(u.n_iter)
+                text.set_text(f'n_iter: {u.n_iter}\nseg_id: {u.seg_id}')
+                text.set_visible(True)
+            else:
+                text.set_visible(False)
+
+        fig.canvas.mpl_connect('pick_event', highlighter)
+        fig.canvas.mpl_connect('motion_notify_event', tooltip)
+
+        return fig
 
     def __repr__(self):
         return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
