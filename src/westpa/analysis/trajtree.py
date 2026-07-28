@@ -489,10 +489,11 @@ class TrajectoryTree:
             highlighted_node_artist.set_offsets([float('inf'), float('inf')])
 
             u = nodes[event.ind[0]]
-            if event.mouseevent.button == plt.MouseButton.LEFT and event.mouseevent.dblclick:
-                subgraph = graph.subgraph(nx.descendants(graph, u) | {u})
-            elif event.mouseevent.button == plt.MouseButton.RIGHT:
-                subgraph = graph.subgraph(nx.ancestors(graph, u) | {u})
+            if event.mouseevent.button == plt.MouseButton.LEFT:
+                if event.mouseevent.dblclick:
+                    subgraph = graph.subgraph(nx.descendants(graph, u) | {u})
+                else:
+                    subgraph = graph.subgraph(nx.ancestors(graph, u) | {u})
             else:
                 return
 
