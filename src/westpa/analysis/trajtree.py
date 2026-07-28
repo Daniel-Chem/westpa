@@ -373,13 +373,13 @@ class TrajectoryTree:
 
         return Trajectory(reversed(segments))
 
-    def to_networkx(self, iter_start=1, iter_stop=None, copy=True):
+    def to_networkx(self, first_iter=1, last_iter=None, copy=True):
         """Return a NetworkX representation of the trajectory tree.
 
         Parameters
         ----------
-        iter_start : int, optional
-        iter_stop : int, optional
+        first_iter : int, optional
+        last_iter : int, optional
         copy : bool, optional
 
         Returns
@@ -388,15 +388,17 @@ class TrajectoryTree:
             Directed graph in which nodes represent trajectory segments.
 
         """
-        iter_range = range(iter_start, iter_stop or self.n_iters + 1)
+        last_iter = last_iter or self.n_iters
+        iter_range = range(first_iter, last_iter + 1)
 
         nodes = (node for node in self._graph if node.n_iter in iter_range)
         graph = self._graph.subgraph(nodes)
 
         return graph.copy() if copy else graph
 
-    def to_pygraphviz(self, iter_start=1, iter_stop=None):
-        iter_range = range(iter_start, iter_stop or self.n_iters + 1)
+    def _to_pygraphviz(self, first_iter=1, last_iter=None):
+        last_iter = last_iter or self.n_iters
+        iter_range = range(first_iter, last_iter + 1)
 
         nodes = (node for node in self._graph if node.n_iter in iter_range)
         graph = self._graph.subgraph(nodes)
@@ -413,14 +415,15 @@ class TrajectoryTree:
 
         return agraph
 
-    def to_matplotlib(self, iter_start=1, iter_stop=None, x_func=None):
+    def to_matplotlib(self, first_iter=1, last_iter=None, x_func=None, x_label=None):
         """Return an interactive visual representation of the trajectory tree.
 
         Parameters
         ----------
-        iter_start : int, optional
-        iter_stop : int, optional
+        first_iter : int, optional
+        last_iter : int, optional
         x_func : callable, optional
+        x_label : str, optional
 
         Returns
         -------
@@ -429,35 +432,37 @@ class TrajectoryTree:
         """
         fig, ax = plt.subplots()
 
-        ax.set_axis_off()
-
-        iter_range = range(iter_start, iter_stop or self.n_iters + 1)
+        last_iter = last_iter or self.n_iters
+        iter_range = range(first_iter, last_iter + 1)
 
         nodes = (u for u in self._graph if u.n_iter in iter_range)
         graph = self._graph.subgraph(nodes)
 
         x = {}
         if x_func is not None:
-            nodes = iter(graph)
             for n_iter in iter_range:
                 for segment in self.get_segments(n_iter):
-                    x[next(nodes)] = x_func(segment)
+                    u = SegmentPointer(segment.n_iter, segment.seg_id)
+                    x[u] = x_func(segment)
+            ax.set_xlabel(x_label or 'x')
         else:
-            agraph = self.to_pygraphviz(iter_start, iter_stop or self.n_iters + 1)
+            agraph = self._to_pygraphviz(first_iter, last_iter)
             agraph.graph_attr['rankdir'] = 'BT'
             agraph.layout(prog='dot')
             for u, au in zip(graph, agraph):
                 x[u] = float(au.attr['pos'].split(',')[0])
+            ax.set_xticks([])
 
-        default_edge_color = 'slategray'
+        ax.set_ylabel('WE Iteration')
 
+        default_edge_color = 'gray'
         edge_artists = {}
         for u, v in graph.edges():
             artist, *_ = ax.plot(
                 [x[u], x[v]],
                 [u.n_iter, v.n_iter],
                 c=default_edge_color,
-                linewidth=1,
+                linewidth=0.75,
                 zorder=1,
             )
             edge_artists[u, v] = artist
@@ -469,50 +474,52 @@ class TrajectoryTree:
 
         y = list(map(attrgetter('n_iter'), graph.nodes()))
         c = list(map(cmap, map(norm, log_weights)))
-        node_artist = ax.scatter(list(x.values()), y, c=c, s=3, picker=True)
+        node_artist = ax.scatter([x[u] for u in graph], y, c=c, s=3, picker=True)
 
-        highlighted_edge_color = 'fuchsia'
-        highlighted = []
-        nodes_by_index = {ind: node for ind, node in enumerate(graph.nodes())}
+        nodes = list(graph)
 
-        def highlighter(event):
-            if event.artist != node_artist:
+        highlight_color = 'magenta'
+        highlighted_edges = set()
+        highlighted_node_artist = ax.scatter(x=[], y=[], c=highlight_color, s=3, alpha=0.8)
+
+        def highlight(event):
+            for edge in highlighted_edges:
+                edge_artists[edge].set_color(default_edge_color)
+            highlighted_edges.clear()
+            highlighted_node_artist.set_offsets([float('inf'), float('inf')])
+
+            u = nodes[event.ind[0]]
+            if event.mouseevent.button == plt.MouseButton.LEFT and event.mouseevent.dblclick:
+                subgraph = graph.subgraph(nx.descendants(graph, u) | {u})
+            elif event.mouseevent.button == plt.MouseButton.RIGHT:
+                subgraph = graph.subgraph(nx.ancestors(graph, u) | {u})
+            else:
                 return
 
-            for artist in highlighted:
-                artist.set_color(default_edge_color)
+            for edge in subgraph.edges():
+                edge_artists[edge].set_color(highlight_color)
+                highlighted_edges.add(edge)
+            highlighted_node_artist.set_offsets([[x[u], u.n_iter] for u in subgraph.nodes()])
 
-            if event.mouseevent.button == plt.MouseButton.LEFT:
-                u = nodes_by_index[event.ind[0]]
-                if event.mouseevent.dblclick:
-                    subgraph = graph.subgraph(nx.descendants(graph, u) | {u})
-                else:
-                    subgraph = graph.subgraph(nx.ancestors(graph, u) | {u})
-                for edge in subgraph.edges():
-                    artist = edge_artists[edge]
-                    artist.set_color(highlighted_edge_color)
-                    highlighted.append(artist)
-
-        text = ax.text(0, 0, '')
-        text.set_bbox({'facecolor': 'white', 'edgecolor': default_edge_color})
+        text_ax = fig.add_axes((0.1, 0.88, 0.8, 0.1))
+        text_ax.axis('off')
+        text = text_ax.text(0.5, 0.25, '', ha='center')
         text.set_visible(False)
 
-        def tooltip(event):
-            if event.inaxes != ax:
-                return
-
+        def hover_text(event):
             contains, details = node_artist.contains(event)
             if contains:
-                u = nodes_by_index[details['ind'][0]]
-                text.set_x(x[u])
-                text.set_y(u.n_iter)
-                text.set_text(f'n_iter: {u.n_iter}\nseg_id: {u.seg_id}')
+                u = nodes[details['ind'][0]]
+                segment = self.get_segment(u.n_iter, u.seg_id)
+                weight = f'{segment.weight:.3g}'
+                coord = '[' + ', '.join(f'{y:.3g}' for y in segment.pcoord[-1]) + ']'
+                text.set_text(f'n_iter={u.n_iter}, seg_id={u.seg_id}, weight={weight}, final_pcoord={coord}')
                 text.set_visible(True)
             else:
                 text.set_visible(False)
 
-        fig.canvas.mpl_connect('pick_event', highlighter)
-        fig.canvas.mpl_connect('motion_notify_event', tooltip)
+        fig.canvas.mpl_connect('pick_event', highlight)
+        fig.canvas.mpl_connect('motion_notify_event', hover_text)
 
         return fig
 
