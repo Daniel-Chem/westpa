@@ -396,27 +396,8 @@ class TrajectoryTree:
 
         return graph.copy() if copy else graph
 
-    def _to_pygraphviz(self, first_iter=1, last_iter=None):
-        last_iter = last_iter or self.n_iters
-        iter_range = range(first_iter, last_iter + 1)
-
-        nodes = (node for node in self._graph if node.n_iter in iter_range)
-        graph = self._graph.subgraph(nodes)
-
-        agraph = pgv.AGraph(directed=True, ordering='out')
-        subgraphs = {}
-        for u, d in graph.nodes(data=True):
-            n_iter = d['subset']
-            if n_iter not in subgraphs:
-                subgraphs[n_iter] = agraph.add_subgraph(rank='same')
-            subgraphs[n_iter].add_node(u, weight=d['weight'])
-        for u, v in graph.edges():
-            agraph.add_edge(u, v)
-
-        return agraph
-
-    def to_matplotlib(self, first_iter=1, last_iter=None, x_func=None, x_label=None):
-        """Return an interactive visual representation of the trajectory tree.
+    def view(self, first_iter=1, last_iter=None, x_func=None, x_label=None):
+        """Display an interactive visualization of the trajectory tree.
 
         Parameters
         ----------
@@ -427,26 +408,66 @@ class TrajectoryTree:
 
         Returns
         -------
-        fig : matplotlib.figure.Figure
+        viewer : :class:`TrajectoryTreeViewer`
 
         """
+        return TrajectoryTreeViewer(self, first_iter, last_iter, x_func, x_label)
+
+    def __repr__(self):
+        return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
+
+
+def _to_pygraphviz(trajtree, first_iter=1, last_iter=None):
+    graph = trajtree.to_networkx(first_iter=first_iter, last_iter=last_iter, copy=False)
+
+    agraph = pgv.AGraph(directed=True, ordering='out')
+    subgraphs = {}
+    for u, d in graph.nodes(data=True):
+        n_iter = d['subset']
+        if n_iter not in subgraphs:
+            subgraphs[n_iter] = agraph.add_subgraph(rank='same')
+        subgraphs[n_iter].add_node(u, weight=d['weight'])
+    for u, v in graph.edges():
+        agraph.add_edge(u, v)
+
+    return agraph
+
+
+class TrajectoryTreeViewer:
+    """Interactive trajectory tree viewer."""
+
+    def __init__(
+        self,
+        trajtree,
+        first_iter=1,
+        last_iter=None,
+        x_func=None,
+        x_label=None,
+        cmap='viridis_r',
+        default_edge_color='gray',
+        highlight_color='magenta',
+    ):
+        self._trajtree = trajtree
+        self._first_iter = first_iter
+        self._last_iter = last_iter or trajtree.n_iters
+        self._x_func = x_func
+        self._x_label = x_label
+        self._cmap = cmap
+        self._default_edge_color = default_edge_color
+        self._highlight_color = highlight_color
+
         fig, ax = plt.subplots()
-
-        last_iter = last_iter or self.n_iters
-        iter_range = range(first_iter, last_iter + 1)
-
-        nodes = (u for u in self._graph if u.n_iter in iter_range)
-        graph = self._graph.subgraph(nodes)
+        graph = trajtree.to_networkx(self.first_iter, self.last_iter, copy=False)
 
         x = {}
         if x_func is not None:
-            for n_iter in iter_range:
-                for segment in self.get_segments(n_iter):
+            for n_iter in range(self.first_iter, self.last_iter + 1):
+                for segment in trajtree.get_segments(n_iter):
                     u = SegmentPointer(segment.n_iter, segment.seg_id)
                     x[u] = x_func(segment)
-            ax.set_xlabel(x_label or 'x')
+            ax.set_xlabel(self.x_label or 'x')
         else:
-            agraph = self._to_pygraphviz(first_iter, last_iter)
+            agraph = _to_pygraphviz(trajtree, self.first_iter, self.last_iter)
             agraph.graph_attr['rankdir'] = 'BT'
             agraph.layout(prog='dot')
             for u, au in zip(graph, agraph):
@@ -455,13 +476,12 @@ class TrajectoryTree:
 
         ax.set_ylabel('WE Iteration')
 
-        default_edge_color = 'gray'
         edge_artists = {}
         for u, v in graph.edges():
             artist, *_ = ax.plot(
                 [x[u], x[v]],
                 [u.n_iter, v.n_iter],
-                c=default_edge_color,
+                c=self.default_edge_color,
                 linewidth=0.75,
                 zorder=1,
             )
@@ -470,62 +490,120 @@ class TrajectoryTree:
         log_weights = np.log([float(d['weight']) for u, d in graph.nodes(data=True)])
 
         norm = mpl.colors.Normalize(vmin=log_weights.min(), vmax=log_weights.max())
-        cmap = mpl.colormaps['viridis'].reversed()
+        cmap = mpl.colormaps[self.cmap]
 
         y = list(map(attrgetter('n_iter'), graph.nodes()))
         c = list(map(cmap, map(norm, log_weights)))
         node_artist = ax.scatter([x[u] for u in graph], y, c=c, s=3, picker=True)
-
-        nodes = list(graph)
-
-        highlight_color = 'magenta'
-        highlighted_edges = set()
-        highlighted_node_artist = ax.scatter(x=[], y=[], c=highlight_color, s=3, alpha=0.8)
-
-        def highlight(event):
-            for edge in highlighted_edges:
-                edge_artists[edge].set_color(default_edge_color)
-            highlighted_edges.clear()
-            highlighted_node_artist.set_offsets([float('inf'), float('inf')])
-
-            u = nodes[event.ind[0]]
-            if event.mouseevent.button == plt.MouseButton.LEFT:
-                if event.mouseevent.dblclick:
-                    subgraph = graph.subgraph(nx.descendants(graph, u) | {u})
-                else:
-                    subgraph = graph.subgraph(nx.ancestors(graph, u) | {u})
-            else:
-                return
-
-            for edge in subgraph.edges():
-                edge_artists[edge].set_color(highlight_color)
-                highlighted_edges.add(edge)
-            highlighted_node_artist.set_offsets([[x[u], u.n_iter] for u in subgraph.nodes()])
+        highlighted_node_artist = ax.scatter(x=[], y=[], c=self.highlight_color, s=3, alpha=0.8)
 
         text_ax = fig.add_axes((0.1, 0.88, 0.8, 0.1))
         text_ax.axis('off')
         text = text_ax.text(0.5, 0.25, '', ha='center')
         text.set_visible(False)
 
-        def hover_text(event):
-            contains, details = node_artist.contains(event)
-            if contains:
-                u = nodes[details['ind'][0]]
-                segment = self.get_segment(u.n_iter, u.seg_id)
-                weight = f'{segment.weight:.3g}'
-                coord = '[' + ', '.join(f'{y:.3g}' for y in segment.pcoord[-1]) + ']'
-                text.set_text(f'n_iter={u.n_iter}, seg_id={u.seg_id}, weight={weight}, final_pcoord={coord}')
-                text.set_visible(True)
+        fig.canvas.mpl_connect('pick_event', self._node_pick)
+        fig.canvas.mpl_connect('motion_notify_event', self._node_hover)
+
+        self._fig = fig
+        self._graph = graph
+        self._nodes = list(graph)
+        self._x = x
+        self._highlighted_subgraph = None
+        self._edge_artists = edge_artists
+        self._node_artist = node_artist
+        self._highlighted_node_artist = highlighted_node_artist
+        self._text = text
+
+    @property
+    def trajtree(self):
+        return self._trajtree
+
+    @property
+    def first_iter(self):
+        return self._first_iter
+
+    @property
+    def last_iter(self):
+        return self._last_iter
+
+    @property
+    def x_func(self):
+        return self._x_func
+
+    @property
+    def x_label(self):
+        return self._x_label
+
+    @property
+    def cmap(self):
+        return self._cmap
+
+    @property
+    def default_edge_color(self):
+        return self._default_edge_color
+
+    @property
+    def highlight_color(self):
+        return self._highlight_color
+
+    def clear_highlights(self):
+        if self._highlighted_subgraph is not None:
+            for edge in self._highlighted_subgraph.edges():
+                self._edge_artists[edge].set_color(self._default_edge_color)
+            self._highlighted_node_artist.set_offsets([float('inf'), float('inf')])
+            self._highlighted_subgraph = None
+
+    def _highlight(self, subgraph):
+        if self._highlighted_subgraph is not None:
+            self.clear_highlights()
+        for edge in subgraph.edges():
+            self._edge_artists[edge].set_color(self.highlight_color)
+        self._highlighted_node_artist.set_offsets([[self._x[u], u.n_iter] for u in subgraph.nodes()])
+        self._highlighted_subgraph = subgraph
+
+    def highlight_trace(self, n_iter, seg_id):
+        u = SegmentPointer(n_iter, seg_id)
+        subgraph = self._graph.subgraph(nx.ancestors(self._graph, u) | {u})
+        self._highlight(subgraph)
+
+    def highlight_subtree(self, n_iter, seg_id):
+        u = SegmentPointer(n_iter, seg_id)
+        subgraph = self._graph.subgraph(nx.descendants(self._graph, u) | {u})
+        self._highlight(subgraph)
+
+    def _node_pick(self, event):
+        self.clear_highlights()
+        n_iter, seg_id = self._nodes[event.ind[0]]
+        if event.mouseevent.button == plt.MouseButton.LEFT:
+            if event.mouseevent.dblclick:
+                self.highlight_subtree(n_iter, seg_id)
             else:
-                text.set_visible(False)
+                self.highlight_trace(n_iter, seg_id)
 
-        fig.canvas.mpl_connect('pick_event', highlight)
-        fig.canvas.mpl_connect('motion_notify_event', hover_text)
+    def _node_hover(self, event):
+        contains, details = self._node_artist.contains(event)
+        if contains:
+            u = self._nodes[details['ind'][0]]
+            self._text.set_text(f'(n_iter, seg_id) = ({u.n_iter}, {u.seg_id})')
+            self._text.set_visible(True)
+        else:
+            self._text.set_visible(False)
 
-        return fig
+    def highlighted_segments(self):
+        if self._highlighted_subgraph is None:
+            return
+            yield  # noqa
 
-    def __repr__(self):
-        return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
+        iter_range = range(self.first_iter, self.last_iter + 1)
+
+        nodes_by_iter = {n_iter: [] for n_iter in iter_range}
+        for u in self._highlighted_subgraph:
+            nodes_by_iter[u.n_iter].append(u)
+
+        for n_iter in iter_range:
+            seg_ids = sorted([u.seg_id for u in nodes_by_iter[n_iter]])
+            yield from self._trajtree.get_segments(n_iter, seg_ids)
 
 
 class Trajectory(Sequence):
