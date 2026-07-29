@@ -21,7 +21,8 @@ __all__ = [
     'Propagator',
     'GromacsPropagator',
     'OpenMMPropagator',
-    'Amberropagator' 'Plugin',
+    'AmberPropagator', 
+    'Plugin',
     'TrajectoryTree',
     'Trajectory',
     'WESTSystem',
@@ -65,10 +66,11 @@ try:
 except ImportError:
     pass
 
-try:
+
+if shutil.which("sander"):
     from .core.propagators._amber import AmberPropagator
-except ImportError:
-    pass
+
+
 
 
 from .analysis import TrajectoryTree, Trajectory
