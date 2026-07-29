@@ -591,19 +591,16 @@ class TrajectoryTreeViewer:
             self._text.set_visible(False)
 
     def highlighted_segments(self):
-        if self._highlighted_subgraph is None:
-            return
-            yield  # noqa
-
-        iter_range = range(self.first_iter, self.last_iter + 1)
-
-        nodes_by_iter = {n_iter: [] for n_iter in iter_range}
-        for u in self._highlighted_subgraph:
-            nodes_by_iter[u.n_iter].append(u)
-
-        for n_iter in iter_range:
-            seg_ids = sorted([u.seg_id for u in nodes_by_iter[n_iter]])
-            yield from self._trajtree.get_segments(n_iter, seg_ids)
+        if self._highlighted_subgraph is not None:
+            iter_range = range(self.first_iter, self.last_iter + 1)
+            seg_ids_by_iter = {n_iter: [] for n_iter in iter_range}
+            for u in self._highlighted_subgraph:
+                seg_ids_by_iter[u.n_iter].append(u.seg_id)
+            for n_iter in iter_range:
+                seg_ids = sorted(seg_ids_by_iter[n_iter])
+                yield from self._trajtree.get_segments(n_iter, seg_ids)
+        else:
+            yield from ()
 
 
 class Trajectory(Sequence):
