@@ -8,6 +8,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+#class PropagatorError()
 
 class Propagator:
     """Base class for propagators. Subclasses must override either the
