@@ -13,14 +13,14 @@ dependencies:
   - pytables
   - mdtraj
   - matplotlib-base
+  - blessings
+  - ipykernel
+  - mpi4py
   - networkx
   - openmm
   - pygraphviz
   - sortedcontainers
-  - blessings
-  - ipykernel
-  - mpi4py
   - sphinx
-  - pydata-sphinx-theme
+  - sphinx-autobuild
   - numpydoc
-  - pip
+  - pydata-sphinx-theme
