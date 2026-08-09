@@ -22,4 +22,5 @@ dependencies:
   - mpi4py
   - sphinx
   - pydata-sphinx-theme
+  - numpydoc
   - pip
