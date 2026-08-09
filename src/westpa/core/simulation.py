@@ -1,4 +1,3 @@
-import copy
 import functools
 import io
 import itertools
@@ -7,7 +6,6 @@ import math
 import operator
 import os
 import time
-from collections.abc import Mapping
 from datetime import timedelta
 
 import numpy as np
@@ -53,10 +51,9 @@ def requires_initialization(func):
 
 
 def default_pcoord(segment):
-    state = segment.final_state
-    if state.coord is None:
-        raise ValueError(f"{state} doesn't have a 'coord' value")
-    return state.coord[np.newaxis, :]
+    if (state := segment.initial_state.coord) is None:
+        raise ValueError(f"can't use default progress coordinate: {state} doesn't have a 'coord' value")
+    return np.stack((segment.initial_state.coord, segment.final_state.coord))
 
 
 class Simulation:
@@ -74,14 +71,22 @@ class Simulation:
         :meth:`get_segments`, :meth:`update_segments`, and
         :meth:`next_iteration` methods.
     pcoord_calculator : callable, optional
-        Function that computes the progress coordinate time series for
-        a given trajectory segment. The function should take a :class:`Segment`
-        object as input and return either a single
-        2-D array or a dictionary of named arrays, one of which is a 2-D array
-        named ``'pcoord'`` (other arrays are stored as auxiliary data).
-        If `pcoord_calculator` is None, the raw coordinates of the segment's
-        final state will be used as the progress coordinate, equivalent to passing
-        ``lambda seg: seg.final_state.coord[None, :]``.
+        Function that returns the progress coordinate time series for
+        a given trajectory segment. It must take parameters
+        ``(segment, parent=None)`` and return either a 2-D array or a tuple
+        of the form ``(pcoord, auxdata)``, where ``pcoord`` is a 2-D array and
+        ``auxdata`` is a dictionary of named arrays to store as auxiliary data.
+        If ``segment`` continues a trajectory, the ``parent`` argument is the
+        preceding segment; otherwise it is ``None``.
+        If `pcoord_calculator` is not specified, the raw coordinates of the
+        segment's initial and final states will be used as progress
+        coordinates, equivalent to passing the following function::
+
+            def default_pcoord(segment, parent=None):
+                return numpy.stack(
+                    (segment.initial_state.coord, segment.final_state.coord)
+                )
+
     bin_mapper : BinMapper, optional
         Routine for grouping trajectories into bins. By default, all the
         trajectories are grouped into a single bin.
@@ -163,6 +168,8 @@ class Simulation:
 
         self._data_manager = DataManager(datafile)
         self._n_iter = None
+
+        self._prev_iter_segments = []
         self._segments = []
         self._resampled_segments = []  # populated by _run_we()
         self._next_iter_segments = []  # populated by _prepare_new_iteration()
@@ -189,8 +196,13 @@ class Simulation:
         if initialized:
             logger.debug('opening existing simulation')
             self._data_manager.open_backing()
+
             self._n_iter = self._data_manager.current_iteration
+
             self._segments = self._data_manager.get_segments()
+            if self._n_iter > 1:
+                self._prev_iter_segments = self._data_manager.get_segments(self._n_iter - 1)
+
             logger.debug('iteration %d; loaded %d segments', self._n_iter, len(self._segments))
             self._data_manager.close_backing()
 
@@ -499,6 +511,8 @@ class Simulation:
         of WESTPA (``<= 2022``), recycling is done *after* resampling.
 
         """
+        self._prev_iter_segments.clear()
+
         self._run_we()
         self._prepare_new_iteration()
         self._finalize_iteration()
@@ -506,7 +520,8 @@ class Simulation:
         self._data_manager.current_iteration += 1
         self._n_iter += 1
 
-        self._segments = copy.copy(self._next_iter_segments)
+        self._prev_iter_segments = self._segments
+        self._segments = self._next_iter_segments.copy()
         self._resampled_segments.clear()
         self._next_iter_segments.clear()
 
@@ -622,7 +637,11 @@ class Simulation:
         future_map = {}
         if self.pcoord_calculator is not None:
             for segment in segments:
-                future = self.work_manager.submit(self.pcoord_calculator, args=(segment,))
+                if segment.initpoint_type == segment.InitPointType.CONTINUES:
+                    parent = self._prev_iter_segments[segment.parent_id]
+                else:
+                    parent = None
+                future = self.work_manager.submit(self.pcoord_calculator, args=(segment, parent))
                 future_map[future] = segment
         else:
             for segment in segments:
@@ -718,14 +737,10 @@ class Simulation:
                 segment = pcoord_future_map.pop(future)
                 result = future.get_result()
 
-                if isinstance(result, Mapping):
-                    if 'pcoord' not in result:
-                        raise RuntimeError("'pcoord_calculator' return value must have a 'pcoord' key")
-                    for key, value in result.items():
-                        if key == 'pcoord':
-                            segment.pcoord = value
-                        else:
-                            segment.data[key] = value
+                if isinstance(result, tuple):
+                    pcoord, auxdata = result
+                    segment.pcoord = pcoord
+                    segment.data.update(auxdata)
                 else:
                     segment.pcoord = result
 

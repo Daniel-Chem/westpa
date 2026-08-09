@@ -450,12 +450,15 @@ class TestPCoordCalculator:
         with westpa.TrajectoryTree(sim.datafile) as trajtree:
             segment = trajtree.get_segment(1, 0)
 
-        assert segment.pcoord.shape == (1, 1)
-        assert np.allclose(segment.pcoord, segment.final_state.coord)
+        assert segment.pcoord.shape == (2, 1)
+        assert np.allclose(segment.pcoord[0], segment.initial_state.coord)
+        assert np.allclose(segment.pcoord[-1], segment.final_state.coord)
 
     def test_without_auxdata(self, datafile, propagator):
-        def pcoord_calculator(segment):
-            return np.expand_dims(-segment.final_state.coord, axis=0)
+        def pcoord_calculator(segment, parent=None):
+            initial_pcoord = parent.pcoord[-1] if parent else segment.initial_state.coord
+            final_pcoord = segment.final_state.coord
+            return np.stack((initial_pcoord, final_pcoord))
 
         sim = westpa.Simulation(
             datafile=datafile,
@@ -463,20 +466,21 @@ class TestPCoordCalculator:
             pcoord_calculator=pcoord_calculator,
         )
         sim.initialize(westpa.State(coord=[0.0]))
-        sim.run(n_iters=1)
+        sim.run(n_iters=2)
 
         with westpa.TrajectoryTree(sim.datafile) as trajtree:
             segment = trajtree.get_segment(1, 0)
 
-        assert segment.pcoord.shape == (1, 1)
-        assert np.allclose(segment.pcoord, -segment.final_state.coord)
+        assert segment.pcoord.shape == (2, 1)
+        assert np.allclose(segment.pcoord[0], segment.initial_state.coord)
+        assert np.allclose(segment.pcoord[-1], segment.final_state.coord)
 
     def test_with_auxdata(self, datafile, propagator):
-        def pcoord_calculator(segment):
-            return {
-                'pcoord': np.expand_dims(-segment.final_state.coord, axis=0),
-                'a': [1, 2, 3],
-            }
+        def pcoord_calculator(segment, parent=None):
+            initial_pcoord = parent.pcoord[-1] if parent else segment.initial_state.coord
+            final_pcoord = segment.final_state.coord
+            auxdata = {'a': [1, 2, 3]}
+            return np.stack((initial_pcoord, final_pcoord)), auxdata
 
         sim = westpa.Simulation(
             datafile=datafile,
@@ -484,11 +488,12 @@ class TestPCoordCalculator:
             pcoord_calculator=pcoord_calculator,
         )
         sim.initialize(westpa.State(coord=[0.0]))
-        sim.run(n_iters=1)
+        sim.run(n_iters=2)
 
         with westpa.TrajectoryTree(sim.datafile, load_auxdata=True) as trajtree:
             segment = trajtree.get_segment(1, 0)
 
-        assert segment.pcoord.shape == (1, 1)
-        assert np.allclose(segment.pcoord, -segment.final_state.coord)
+        assert segment.pcoord.shape == (2, 1)
+        assert np.allclose(segment.pcoord[0], segment.initial_state.coord)
+        assert np.allclose(segment.pcoord[-1], segment.final_state.coord)
         assert segment.data['a'].tolist() == [1, 2, 3]
