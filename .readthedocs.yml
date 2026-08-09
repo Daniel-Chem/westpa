@@ -2,12 +2,11 @@
 
 version: 2
 
-formats: all
-
 build:
   os: ubuntu-lts-latest
   tools:
-    python: mambaforge-4.10
+    python: miniforge3-latest
+
 
 sphinx:
   configuration: doc/conf.py
@@ -18,5 +17,3 @@ conda:
 python:
   install:
   - path: .
-    extra_requirements:
-      - doc

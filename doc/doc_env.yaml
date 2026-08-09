@@ -13,6 +13,10 @@ dependencies:
   - pytables
   - mdtraj
   - matplotlib-base
+  - networkx
+  - openmm
+  - pygraphviz
+  - sortedcontainers
   - blessings
   - ipykernel
   - mpi4py
