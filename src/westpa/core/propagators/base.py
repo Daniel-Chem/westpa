@@ -142,14 +142,14 @@ class Propagator:
             Propagated segment.
 
         """
-        return self.propagate_block([segment])
+        return self.propagate_block([segment], rng)[0]
 
     def propagate_block(self, segments, rng):
         """Propagate a block of segments.
 
         Parameters
         ----------
-        segments : tuple of :class:`Segment`
+        segments : sequence of :class:`Segment`
             Segments to propagate.
         rng : numpy.random.Generator
             Pseudo-random number generator for seeding the stochastic dynamics
@@ -157,11 +157,11 @@ class Propagator:
 
         Returns
         -------
-        segments : tuple of :class:`Segment`
+        segments : sequence of :class:`Segment`
             Propagated segments.
 
         """
-        return map(self.propagate, segments)
+        return tuple(map(self.propagate, ((segment, rng) for segment in segments)))
 
     def make_segment_dir(self, segment):
         """Create a directory to store output for a given segment, and return
