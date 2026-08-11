@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pygraphviz as pgv
+import os
+import pickle
 
 from ..core._data_manager import DataManager  # noqa
 
@@ -18,6 +20,8 @@ class SegmentPointer(NamedTuple):
 
 
 class TrajectoryTree:
+    DEFAULT_CACHE_GRAPH_PATH = "west_graph.pkl"
+
     """Interface for analyzing weighted ensemble trajectory data.
 
     Parameters
@@ -98,38 +102,84 @@ class TrajectoryTree:
     def __init__(
         self,
         datafile,
+        graph_pkl:str = None,
         load_pcoords=True,
         load_auxdata=False,
+        cache_graph:bool=True,
     ):
         self.data_manager = DataManager(datafile)
         self.data_manager.open_backing(mode='r')
-
         self._load_pcoords = None
         self._load_auxdata = None
-
+        self._graph = None
         self.load_pcoords = load_pcoords
         self.load_auxdata = load_auxdata
+        self._cache_graph = cache_graph
+
+        if graph_pkl is not None:
+            self.graph=graph_pkl
+
+        if cache_graph:
+            self.graph
+
+    @property
+    def graph(self):
+        """Construct graph, or return the graph loaded via the setter."""
+        if self._graph is None:
+            self._graph = self._construct_graph()
+            if self._cache_graph:
+                self._save_graph(self.DEFAULT_CACHE_GRAPH_PATH)
+        return self._graph
+
+    @graph.setter
+    def graph(self, filepath):
+        """Load a previously pickled graph from `filepath`."""
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Provided graph cache file {filepath} not found")
+        self._graph = self._load_graph(filepath)
+
+    def _save_graph(self, filepath):
+        with open(filepath, 'wb') as f:
+            pickle.dump(self._graph, f)
+
+    def _load_graph(self, filepath):
+        """Load a previously pickled graph from `filepath`."""
+        with open(filepath, 'rb') as f:
+            graph = pickle.load(f)
+        if not isinstance(graph, nx.DiGraph):
+            raise TypeError(f"Pickled object at {filepath} is not a networkx.DiGraph (got {type(graph).__name__})")
+        return graph
+
+    def _construct_graph(self):
+        """
+        called to construct graph
+        """
 
         graph = nx.DiGraph()
-
         for n_iter in range(1, self.n_iters + 1):
+            #!iterate over all iterations
             seg_ids = range(self.segment_count(n_iter))
-
+            #fetches total number of segments in a given iteration
             nodes = [SegmentPointer(n_iter, seg_id) for seg_id in seg_ids]
+            #create a list of segment pointer objects
             weights = self.data_manager.get_weights(n_iter, seg_ids)
+            #fetch all weights for segments in this iteration returns a list ordered the same as segids
             for node, weight in zip(nodes, weights):
+                #iterate over list of segment pointers and list of weights, add them all as nodes
                 graph.add_node(node, subset=n_iter, weight=weight)
 
             if n_iter == 1:
                 continue
 
             parent_ids = self.data_manager.get_all_parent_ids(n_iter).tolist()
+            #get the parent ids for all segments in current iter convert to list
             for node, parent_id in zip(nodes, parent_ids):
+                #now iterate over list of segment pointers aka nodes, and the parent ids, and add pointers
                 if parent_id < 0:
                     continue
                 graph.add_edge(SegmentPointer(n_iter - 1, parent_id), node)
-
-        self._graph = graph
+                #!connect the parents to
+        return graph
 
     def close(self):
         """Close the HDF5 file."""
@@ -200,7 +250,7 @@ class TrajectoryTree:
 
         """
         if n_iter is None:
-            return self._graph.number_of_nodes()
+            return self.graph.number_of_nodes()
         else:
             return self._get_iter_group(n_iter)['seg_index'].shape[0]
 
@@ -302,7 +352,7 @@ class TrajectoryTree:
         node = SegmentPointer(segment.n_iter, segment.seg_id)
 
         for _ in range(n):
-            predecessor = next(self._graph.predecessors(node), None)
+            predecessor = next(self.graph.predecessors(node), None)
             if predecessor is None:
                 return None
             node = predecessor
@@ -335,7 +385,7 @@ class TrajectoryTree:
         nodes = [SegmentPointer(segment.n_iter, segment.seg_id)]
 
         for _ in range(n):
-            successors = list(chain.from_iterable(map(self._graph.successors, nodes)))
+            successors = list(chain.from_iterable(map(self.graph.successors, nodes)))
             if not successors:
                 return []
             nodes = successors
@@ -391,12 +441,12 @@ class TrajectoryTree:
         last_iter = last_iter or self.n_iters
         iter_range = range(first_iter, last_iter + 1)
 
-        nodes = (node for node in self._graph if node.n_iter in iter_range)
-        graph = self._graph.subgraph(nodes)
+        nodes = (node for node in self.graph if node.n_iter in iter_range)
+        graph = self.graph.subgraph(nodes)
 
         return graph.copy() if copy else graph
 
-    def view(self, first_iter=1, last_iter=None, x_func=None, x_label=None):
+    def view(self, first_iter=1, last_iter=None, x_func=None, x_label=None,cache_network = True):
         """Display an interactive visualization of the trajectory tree.
 
         Parameters
@@ -405,6 +455,7 @@ class TrajectoryTree:
         last_iter : int, optional
         x_func : callable, optional
         x_label : str, optional
+        cache_network : bool, optional
 
         Returns
         -------
@@ -506,7 +557,7 @@ class TrajectoryTreeViewer:
         fig.canvas.mpl_connect('motion_notify_event', self._node_hover)
 
         self._fig = fig
-        self._graph = graph
+        self.graph = graph
         self._nodes = list(graph)
         self._x = x
         self._highlighted_subgraph = None
@@ -564,12 +615,12 @@ class TrajectoryTreeViewer:
 
     def highlight_trace(self, n_iter, seg_id):
         u = SegmentPointer(n_iter, seg_id)
-        subgraph = self._graph.subgraph(nx.ancestors(self._graph, u) | {u})
+        subgraph = self.graph.subgraph(nx.ancestors(self.graph, u) | {u})
         self._highlight(subgraph)
 
     def highlight_subtree(self, n_iter, seg_id):
         u = SegmentPointer(n_iter, seg_id)
-        subgraph = self._graph.subgraph(nx.descendants(self._graph, u) | {u})
+        subgraph = self.graph.subgraph(nx.descendants(self.graph, u) | {u})
         self._highlight(subgraph)
 
     def _node_pick(self, event):
