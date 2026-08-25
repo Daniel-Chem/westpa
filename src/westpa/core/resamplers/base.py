@@ -54,7 +54,7 @@ class Resampler(abc.ABC):
         if rng is None:
             seed = secrets.randbits(128)
             self.rng = np.random.default_rng(seed)
-            logger.info(f"Using NumPy default_rng({seed=})")
+            logger.info(f"rng=numpy.random.default_rng({seed=})")
         else:
             self.rng = np.random.default_rng(rng)
 
