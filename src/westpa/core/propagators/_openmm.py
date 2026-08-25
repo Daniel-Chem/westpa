@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import openmm.app
 
-from .base import Propagator
+from .base import SerialPropagator
 from westpa.core.state import State
 
 logger = logging.getLogger(__name__)
@@ -19,15 +19,15 @@ class Report:
     options: dict
 
 
-class OpenMMPropagator(Propagator):
+class OpenMMPropagator(SerialPropagator):
     """Molecular dynamics propagator built on the `OpenMM <https://openmm.org/>`_ toolkit.
 
-    To create a :class:`~westpa.State` object compatible with this propagator,
-    write an OpenMM State object to an XML file (e.g., ``state.xml``) and pass
-    the absolute path to the `file` parameter::
+    To create an initial state for this propagator,
+    `save <https://docs.openmm.org/latest/api-python/generated/openmm.app.simulation.Simulation.html#openmm.app.simulation.Simulation.saveState>`_
+    an OpenMM State object to an XML file (e.g., ``state.xml``), and pass the
+    absolute path to the `file` parameter::
 
-        >>> import westpa
-        >>> state = westpa.State(file='/path/to/state.xml')
+        state = westpa.State(file='/path/to/state.xml')
 
     Parameters
     ----------
@@ -47,7 +47,7 @@ class OpenMMPropagator(Propagator):
         Name of the XML file used to store the final state of a segment.
         Defaults to ``'final_state.xml'``.
     **kwargs
-        Arguments to pass to the :class:`Propagator` base class constructor.
+        Arguments to pass to the :class:`SerialPropagator` base class constructor.
 
     Examples
     --------
@@ -134,20 +134,20 @@ class OpenMMPropagator(Propagator):
         self._reports = []
 
     def add_reporter(self, reporter_type, filename, report_interval, options=None):
-        """Add a reporter to output time series data for each segment.
+        """Add a reporter to save time series data for each segment.
 
         Parameters
         ----------
         reporter_type : type
             Class compatible with the OpenMM reporter protocol. It must be
-            possible to create an instance by calling
-            ``reporter_type(filename, report_interval)``.
+            possible to create a reporter by calling
+            ``reporter_type(filename, report_interval, **options)``.
         filename : str
             Name of the file to write output to.
         report_interval : int
             Interval (in time steps) at which to write frames.
         options : Mapping[str, Any], optional
-            Optional arguments to pass to the `reporter_type` constructor.
+            Optional keyword arguments to pass to the `reporter_type` constructor.
 
         """
         report = Report(reporter_type, filename, report_interval, options or {})

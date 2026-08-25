@@ -13,15 +13,14 @@ from sortedcontainers import SortedList
 
 from .state import State
 from .segment import Segment
-from .propagators import Propagator
 from .binning import BinMapper, NopMapper
 from .resamplers import HuberKimResampler, Resampler
 from .source_sink import Source, Sink
 from .plugins import Plugin
 from .sim_manager import PropagationError
+from ._data_manager import DataManager
 from ..work_managers import SerialWorkManager
 from ..work_managers.core import WorkManager
-from ._data_manager import DataManager
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ class Simulation:
     datafile : str or io.BytesIO
         HDF5 file used to store simulation data. Either a pathname (e.g.,
         ``'west.h5'``) or an in-memory stream may be provided.
-    propagator : :class:`Propagator` or None
+    propagator : :class:`~westpa.core.protocols.Propagator` or None
         Routine for propagating trajectories forward in time. Required when
         using the :meth:`run` method to run the simulation. If `propagator` is
         None, the simulation may be run in "WE-only" mode using the
@@ -218,8 +217,8 @@ class Simulation:
 
     @propagator.setter
     def propagator(self, value):
-        if value is not None and not isinstance(value, Propagator):
-            raise TypeError("'propagator' must be a Propagator object or None")
+        if value is not None and not callable(value):
+            raise TypeError("'propagator' must be callable or None")
         self._propagator = value
 
     @property
@@ -651,6 +650,11 @@ class Simulation:
 
     # manages istate generation, propagation, and pcoord calculation tasks
     def _propagate(self):
+        if value := getattr(self.propagator, 'block_size', None):
+            propagator_block_size = value
+        else:
+            propagator_block_size = len(self._segments)
+
         istate_futures = set()
         propagator_futures = set()
         pcoord_future_map = {}
@@ -690,7 +694,7 @@ class Simulation:
                 prepared_segments += segments
 
         # dispatch pending propagation tasks
-        for segments in batched(prepared_segments, self.propagator.block_size):
+        for segments in batched(prepared_segments, propagator_block_size):
             future = self.work_manager.submit(self.propagator, args=(segments,))
             propagator_futures.add(future)
         prepared_segments.clear()
@@ -715,7 +719,7 @@ class Simulation:
                 self._segments[segment.seg_id] = segment
                 self._data_manager.write_initial_states(self._n_iter, segments=[segment])
 
-                if len(prepared_segments) == self.propagator.block_size or not istate_futures:
+                if len(prepared_segments) == propagator_block_size or not istate_futures:
                     future = self.work_manager.submit(self.propagator, args=(prepared_segments,))
                     propagator_futures.add(future)
                     prepared_segments.clear()
