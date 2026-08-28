@@ -1,9 +1,7 @@
 import os
 import re
 import stat
-
 import pytest
-
 import westpa
 from westpa.core.propagators._amber import AmberPropagator
 from westpa.core.sim_manager import PropagationError
@@ -47,13 +45,13 @@ def propagator(prmtop_file, tmp_path):
 def test_default_final_state_filename(propagator):
     assert propagator.final_state_filename == 'restrt'
 
-# When enginge is not a valid option
+# When engine is not a valid option
 def test_invalid_engine_raises(propagator, newtraj_segment):
     propagator.engine = 'not_a_real_engine'
     with pytest.raises(PropagationError, match='not a valid'):
         propagator.get_command(newtraj_segment, rng=None)
 
-# When enginge is not found on Path
+# When engine is not found on Path
 def test_engine_not_on_path_raises(propagator, newtraj_segment, monkeypatch):
     monkeypatch.setattr('shutil.which', lambda engine: None)
     with pytest.raises(PropagationError, match='not found in PATH'):
@@ -64,7 +62,7 @@ def test_engine_name_is_lowercased(prmtop_file):
     propagator = AmberPropagator(md_parameters={}, prmtop_file=str(prmtop_file), engine='SANDER')
     assert propagator.engine == 'sander'
 
-# checks that given a correctly constructred path from shutil.which the command correctly includes the enginge name in the command
+# checks that given a correctly constructed path from shutil.which the command correctly includes the engine name in the command
 @pytest.mark.parametrize('engine', ['sander', 'pmemd', 'pmemd.cuda'])
 def test_valid_engines_accepted(prmtop_file, initial_state, engine, monkeypatch):
     monkeypatch.setattr('shutil.which', lambda engine: f'/usr/bin/{engine}')
@@ -75,7 +73,7 @@ def test_valid_engines_accepted(prmtop_file, initial_state, engine, monkeypatch)
     assert engine in command
 
 
-# checks that given a correctly constructred path from shutil.which the command correctly includes the -p and -c flags 
+# checks that given a correctly constructed path from shutil.which the command correctly includes the -p and -c flags
 def test_command_contains_topology_and_initial_state(propagator, newtraj_segment, prmtop_file, monkeypatch):
     monkeypatch.setattr('shutil.which', lambda engine: '/usr/bin/sander')
     rng = propagator._get_rng(newtraj_segment)
@@ -132,6 +130,7 @@ def fake_sander(tmp_path, monkeypatch):
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv('PATH', f'{bin_dir}{os.pathsep}{os.environ["PATH"]}')
 
+#Full test it circumvents calling sander and just creates the expected restart file, it then checks other variables are set
 def test_call_produces_final_state(propagator, newtraj_segment, fake_sander):
     segments = propagator([newtraj_segment])
     segment = segments[0]

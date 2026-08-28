@@ -60,7 +60,7 @@ class AmberPropagator(SubprocessPropagator):
 
         # Check engine option is allowed
         if self.engine.lower() not in ["sander", "pmemd", "pmemd.cuda"]:
-            raise PropagationError(f"Engine {self.engine} is not a valid enginge option.")
+            raise PropagationError(f"Engine {self.engine} is not a valid engine option.")
             raise PropagatorError(f"Engine {self.engine} was not found.")
 
         # ===== start command construction handling =====
