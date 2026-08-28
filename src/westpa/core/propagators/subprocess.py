@@ -3,11 +3,12 @@ import os
 import signal
 import subprocess
 
-from .base import Propagator
+from .base import SerialPropagator
 from ..state import State
 
 
-class SubprocessPropagator(Propagator):
+
+class SubprocessPropagator(SerialPropagator):
     """Propagates a trajectory segment by running an external program.
     The program is executed in the directory created by the
     :meth:`make_segment_dir` method.

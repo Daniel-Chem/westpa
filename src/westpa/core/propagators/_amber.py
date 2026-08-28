@@ -1,6 +1,5 @@
 import logging
 import subprocess
-from .base import Propagator
 from .subprocess import SubprocessPropagator
 from ..state import State
 import time
