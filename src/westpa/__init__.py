@@ -18,7 +18,8 @@ __all__ = [
     'Simulation',
     'Source',
     'Sink',
-    'Propagator',
+    'SerialPropagator',
+    'VectorizedPropagator',
     'GromacsPropagator',
     'OpenMMPropagator',
     'AmberPropagator', 
@@ -35,7 +36,7 @@ import shutil
 
 from .core.state import State
 from .core.segment import Segment
-from .core.propagators import Propagator
+from .core.propagators import SerialPropagator, VectorizedPropagator
 from .core.binning import (
     Bin,
     BinMapper,

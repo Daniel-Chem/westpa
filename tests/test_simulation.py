@@ -13,7 +13,7 @@ from westpa.work_managers import SerialWorkManager
 # ---------------------------------------------------------------------------
 
 
-class TrivialPropagator(westpa.Propagator):
+class TrivialPropagator(westpa.SerialPropagator):
     """Moves a 1-D coordinate by a fixed delta each step."""
 
     def __init__(self, delta=0.1, **kwargs):
@@ -26,7 +26,7 @@ class TrivialPropagator(westpa.Propagator):
         return segment
 
 
-class FailingPropagator(westpa.Propagator):
+class FailingPropagator(westpa.SerialPropagator):
     """Always marks segments as failed."""
 
     def propagate(self, segment):
@@ -93,7 +93,7 @@ class TestSimulationConstructor:
         assert sim.istate_generator is None
 
     def test_invalid_propagator_type(self, datafile):
-        with pytest.raises(TypeError, match="'propagator' must be a Propagator object or None"):
+        with pytest.raises(TypeError, match="'propagator' must be callable or None"):
             westpa.Simulation(
                 datafile=datafile,
                 propagator="not_a_propagator",

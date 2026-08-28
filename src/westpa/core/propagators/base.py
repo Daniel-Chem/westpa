@@ -3,6 +3,7 @@ import os
 import secrets
 import time
 import traceback
+from abc import ABC, abstractmethod
 
 import numpy as np
 
@@ -10,163 +11,73 @@ logger = logging.getLogger(__name__)
 
 #class PropagatorError()
 
-class Propagator:
-    """Base class for propagators. Subclasses must override either the
-    :meth:`propagate` method or the :meth:`propagate_block` method.
-
-    Parameters
-    ----------
-    block_size : int, optional
-        Block size (in number of segments) for propagation tasks.
-        Defaults to 128 if :meth:`propagate_block` is overridden;
-        otherwise defaults to 1.
-    segment_dir_template : str, optional
-        Template string specifying the directory in which to store output for a
-        given segment. The string must contain ``{n_iter}`` and ``{seg_id}``
-        replacement fields. If a relative path is provided, it is assumed to be
-        relative to the current working directory. Defaults to
-        ``'traj_segs/{n_iter:06d}/{seg_id:06d}'``.
-    root_seed : int, optional
-        Root random seed. Must be non-negative. The `root_seed` is combined
-        with ``n_iter`` and ``seg_id`` values to create reproducible random
-        seeds according to the approach described in
-        `this section <https://numpy.org/doc/stable/reference/random/parallel.html#sequence-of-integer-seeds>`_
-        of the NumPy reference manual. Defaults to ``secrets.randbits(128)``.
-    bit_generator_type : type, optional
-        Subclass of ``numpy.random.BitGenerator``. This parameter determines
-        the type of bit generator passed to the :meth:`propagate` and
-        :meth:`propagate_block` methods. Defaults to ``numpy.random.PCG64``.
-
-    Attributes
-    ----------
-    block_size : int
-    segment_dir_template : str
-    root_seed : int
-    bit_generator_type : type
-
-    Methods
-    -------
-    propagate
-    propagate_block
-    make_segment_dir
-
-    """
-
+class _PropagatorBase(ABC):
     DEFAULT_SEGMENT_DIR_TEMPLATE = 'traj_segs/{n_iter:06d}/{seg_id:06d}'
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        a = cls.propagate is not Propagator.propagate
-        b = cls.propagate_block is not Propagator.propagate_block
-        if a == b:
-            raise TypeError("subclasses of Propagator must override either 'propagate' or 'propagate_block'")
 
     def __init__(
         self,
         block_size=None,
-        segment_dir_template=None,
         root_seed=None,
         bit_generator_type=None,
+        segment_dir_template=None,
     ):
-        if type(self) is Propagator:
-            raise TypeError("Propagator can't be instantiated directly")
-
-        if block_size is None:
-            if type(self).propagate_block is not Propagator.propagate_block:
-                block_size = 128
-            else:
-                block_size = 1
-        else:
-            if not isinstance(block_size, int):
-                raise TypeError("'block_size' must be an integer")
-            if block_size < 1:
-                raise ValueError("'block_size' must be positive")
-
-        if segment_dir_template is None:
-            segment_dir_template = self.DEFAULT_SEGMENT_DIR_TEMPLATE
-        else:
-            try:
-                segment_dir_template.format(n_iter=1, seg_id=0)
-            except ValueError:
-                raise
-
-        if root_seed is None:
-            root_seed = secrets.randbits(128)
-        else:
-            if not isinstance(root_seed, int):
-                raise TypeError("'root_seed' must be an integer")
-            if root_seed < 0:
-                raise ValueError("'root_seed' must be non-negative")
-
-        logger.info(f'{root_seed=}')
-
-        if bit_generator_type is None:
-            bit_generator_type = np.random.PCG64
-        elif not issubclass(bit_generator_type, np.random.BitGenerator):
-            raise TypeError("'bit_generator_type' must be a subclass of numpy.random.BitGenerator")
-
-        self._block_size = block_size
-        self._segment_dir_template = os.path.abspath(segment_dir_template)
-        self._root_seed = root_seed
-        self._bit_generator_type = bit_generator_type
+        self.block_size = block_size
+        self.root_seed = root_seed if root_seed is not None else secrets.randbits(128)
+        self.bit_generator_type = bit_generator_type or np.random.PCG64
+        self.segment_dir_template = segment_dir_template or self.DEFAULT_SEGMENT_DIR_TEMPLATE
 
     @property
     def block_size(self):
-        """Block size for propagation tasks."""
+        """Batch size for propagation tasks."""
         return self._block_size
 
-    @property
-    def segment_dir_template(self):
-        """Segment directory template."""
-        return self._segment_dir_template
+    @block_size.setter
+    def block_size(self, value):
+        if value is not None:
+            if not isinstance(value, int):
+                raise TypeError("'block_size' must be an integer or None")
+            if value < 1:
+                raise ValueError("'block_size' must be positive")
+        self._block_size = value
 
     @property
     def root_seed(self):
         """Root seed integer."""
         return self._root_seed
 
+    @root_seed.setter
+    def root_seed(self, value):
+        if not isinstance(value, int):
+            raise TypeError("'root_seed' must be an integer")
+        if value < 0:
+            raise ValueError("'root_seed' must be non-negative")
+        self._root_seed = value
+        logger.info(f'root_seed={value}')
+
     @property
     def bit_generator_type(self):
-        """Bit generator type."""
+        """Algorithm for generating random bits."""
         return self._bit_generator_type
 
-    def propagate(self, segment, rng):
-        """Propagate a single segment.
+    @bit_generator_type.setter
+    def bit_generator_type(self, value):
+        if not issubclass(value, np.random.BitGenerator):
+            raise TypeError("'bit_generator_type' must be a subclass of numpy.random.BitGenerator")
+        self._bit_generator_type = value
 
-        Parameters
-        ----------
-        segment : :class:`Segment`
-            Segment to propagate.
-        rng : numpy.random.Generator
-            Pseudo-random number generator for seeding the stochastic dynamics
-            engine.
+    @property
+    def segment_dir_template(self):
+        """Segment output directory template."""
+        return self._segment_dir_template
 
-        Returns
-        -------
-        segment : :class:`Segment`
-            Propagated segment.
+    @segment_dir_template.setter
+    def segment_dir_template(self, value):
+        self._segment_dir_template = os.path.abspath(value)
 
-        """
-        return self.propagate_block([segment], rng)[0]
-
-    def propagate_block(self, segments, rng):
-        """Propagate a block of segments.
-
-        Parameters
-        ----------
-        segments : sequence of :class:`Segment`
-            Segments to propagate.
-        rng : numpy.random.Generator
-            Pseudo-random number generator for seeding the stochastic dynamics
-            engine.
-
-        Returns
-        -------
-        segments : sequence of :class:`Segment`
-            Propagated segments.
-
-        """
-        return tuple(map(self.propagate, ((segment, rng) for segment in segments)))
+    def _get_rng(self, segment):
+        seed = [segment.seg_id, segment.n_iter, self.root_seed]
+        bit_generator = self._bit_generator_type(seed)
+        return np.random.default_rng(bit_generator)
 
     def make_segment_dir(self, segment):
         """Create a directory to store output for a given segment, and return
@@ -174,8 +85,8 @@ class Propagator:
 
         Parameters
         ----------
-        segment : :class:`Segment`
-            Segment to create output directory for.
+        segment : Segment
+            Segment to create the output directory for.
 
         Returns
         -------
@@ -187,25 +98,205 @@ class Propagator:
         os.makedirs(segment_dir)
         return segment_dir
 
-    def _get_rng(self, segment):
-        seed = [segment.seg_id, segment.n_iter, self.root_seed]
-        bit_generator = self._bit_generator_type(seed)
-        return np.random.default_rng(bit_generator)
+    @abstractmethod
+    def __call__(self, segments):  # noqa
+        ...
+
+
+class SerialPropagator(_PropagatorBase):
+    """Base class for propagators that propagate one segment at a time.
+    Subclasses must implement the :meth:`propagate` method.
+
+    The ``SerialPropagator`` base class provides built-in functionality for
+    reproducible random seeding, segment failure detection, and performance
+    timing.
+
+    Parameters
+    ----------
+    root_seed : int, optional
+        Root seed integer. Must be non-negative. Used to reproducibly seed
+        the pseudorandom number generator (PRNG) passed to the
+        :meth:`propagate` method. Defaults to ``secrets.randbits(128)``.
+    bit_generator_type : type, optional
+        Subclass of ``numpy.random.BitGenerator`` specifying the PRNG
+        algorithm to use. Defaults to ``numpy.random.PCG64``.
+    segment_dir_template : str, optional
+        Path template used by the :meth:`make_segment_dir` method. Must
+        contain ``{n_iter}`` and ``{seg_id}`` replacement fields. If a
+        relative path is provided, it is assumed to be relative to the
+        current working directory.
+        Defaults to ``'traj_segs/{n_iter:06d}/{seg_id:06d}'``.
+
+    Attributes
+    ----------
+    root_seed : int
+    bit_generator_type : type
+    segment_dir_template : str
+
+    Methods
+    -------
+    propagate
+    make_segment_dir
+
+    Examples
+    --------
+    Create a propagator that simulates a random walk on the integers:
+
+    >>> import westpa
+    >>> class RandomWalkPropagator(westpa.SerialPropagator):
+    ...     def __init__(self, p=0.5, steps=1, **kwargs):
+    ...         super().__init__(**kwargs)
+    ...         self.p = [p, 1 - p]
+    ...         self.steps = steps
+    ...     def propagate(self, segment, rng):
+    ...         delta = rng.choice([-1, 1], p=self.p, size=self.steps).sum()
+    ...         final_coord = segment.initial_state.coord + delta
+    ...         segment.final_state = westpa.State(coord=final_coord)
+    ...         return segment
+    ...
+    >>> propagator = RandomWalkPropagator(steps=100, root_seed=12345)
+
+    Propagate a test segment:
+
+    >>> segment = westpa.Segment(1, 0, initial_state=westpa.State([0]))
+    >>> segment, = propagator([segment])
+    >>> segment.final_state.coord
+    array([-8])
+    >>> segment.walltime  # doctest: +SKIP
+    0.00029450003057718277
+
+    """
+
+    @abstractmethod
+    def propagate(self, segment, rng):
+        """Propagate a single trajectory segment.
+
+        Parameters
+        ----------
+        segment : Segment
+            Segment to propagate.
+        rng : numpy.random.Generator
+            PRNG initialized as follows::
+
+                seed = [segments[0].seg_id, segments[0].n_iter, self.root_seed]
+                bit_generator = self.bit_generator_type(seed)
+                rng = numpy.random.default_rng(bit_generator)
+
+            The choice of seed is based on the
+            `sequence of integer seeds <https://numpy.org/doc/stable/reference/random/parallel.html#sequence-of-integer-seeds>`_
+            scheme for parallel random number generation.
+
+        Returns
+        -------
+        segment : Segment
+            Propagated segment.
+
+        """
+        ...
 
     def __call__(self, segments):
-        # call propagate() if it is overridden; else call propagate_block()
-        if type(self).propagate is not Propagator.propagate:
-            for segment in segments:
-                rng = self._get_rng(segment)
-                start_walltime = time.perf_counter()
-                try:
-                    segment = self.propagate(segment, rng)
-                except Exception:
-                    segment.mark_as_failed(traceback.format_exc())
-                else:
-                    segment.walltime = time.perf_counter() - start_walltime
-        else:
-            rng = self._get_rng(segments[0])
-            segments = self.propagate_block(segments, rng)
-
+        for segment in segments:
+            rng = self._get_rng(segment)
+            start_walltime = time.perf_counter()
+            try:
+                segment = self.propagate(segment, rng)
+            except Exception:
+                segment.mark_as_failed(traceback.format_exc())
+            else:
+                segment.walltime = time.perf_counter() - start_walltime
         return segments
+
+
+class VectorizedPropagator(_PropagatorBase):
+    """Base class for propagators that propagate multiple segments at the same time.
+    Subclasses must implement the :meth:`propagate` method.
+
+    The ``VectorizedPropagator`` base class provides built-in functionality
+    for reproducible random seeding and segment failure detection.
+
+    Parameters
+    ----------
+    root_seed : int, optional
+        Root seed integer. Must be non-negative. Used to reproducibly seed
+        the pseudorandom number generator (PRNG) passed to the
+        :meth:`propagate` method. Defaults to ``secrets.randbits(128)``.
+    bit_generator_type : type, optional
+        Subclass of ``numpy.random.BitGenerator`` specifying the PRNG
+        algorithm to use. Defaults to ``numpy.random.PCG64``.
+    segment_dir_template : str, optional
+        Path template used by the :meth:`make_segment_dir` method. Must
+        contain ``{n_iter}`` and ``{seg_id}`` replacement fields. If a
+        relative path is provided, it is assumed to be relative to the
+        current working directory.
+        Defaults to ``'traj_segs/{n_iter:06d}/{seg_id:06d}'``.
+
+    Attributes
+    ----------
+    root_seed : int
+    bit_generator_type : type
+    segment_dir_template : str
+
+    Methods
+    -------
+    propagate
+    make_segment_dir
+
+    Examples
+    --------
+    Create a propagator that simulates a random walk on the integers:
+
+    >>> import westpa
+    >>> class RandomWalkPropagator(westpa.VectorizedPropagator):
+    ...     def __init__(self, p=0.5, steps=1, **kwargs):
+    ...         super().__init__(**kwargs)
+    ...         self.p = [p, 1 - p]
+    ...         self.steps = steps
+    ...     def propagate(self, segments, rng):
+    ...         deltas = rng.choice(
+    ...             [1, -1], p=self.p, size=(len(segments), self.steps)
+    ...         ).sum(axis=1)
+    ...         for segment, delta in zip(segments, deltas):
+    ...             final_coord = segment.initial_state.coord + delta
+    ...             segment.final_state = westpa.State(coord=final_coord)
+    ...         return segments
+    ...
+    >>> propagator = RandomWalkPropagator(steps=100, root_seed=12345)
+
+    Propagate a test segment:
+
+    >>> segment = westpa.Segment(1, 0, initial_state=westpa.State([0]))
+    >>> segment, = propagator([segment])
+    >>> segment.final_state.coord
+    array([-8])
+
+    """
+
+    @abstractmethod
+    def propagate(self, segments, rng):
+        """Propagate a batch of trajectory segments.
+
+        Parameters
+        ----------
+        segments : sequence of Segment
+            Segments to propagate.
+        rng : numpy.random.Generator
+            PRNG initialized as follows::
+
+                seed = [segments[0].seg_id, segments[0].n_iter, self.root_seed]
+                bit_generator = self.bit_generator_type(seed)
+                rng = numpy.random.default_rng(bit_generator)
+
+            The choice of seed is based on the
+            `sequence of integer seeds <https://numpy.org/doc/stable/reference/random/parallel.html#sequence-of-integer-seeds>`_
+            scheme for parallel random number generation.
+
+        Returns
+        -------
+        segments : iterable of Segment
+            Propagated segments.
+
+        """
+        ...
+
+    def __call__(self, segments):
+        return self.propagate(segments, rng=self._get_rng(segments[0]))
