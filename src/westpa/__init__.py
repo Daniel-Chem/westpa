@@ -22,7 +22,7 @@ __all__ = [
     'VectorizedPropagator',
     'GromacsPropagator',
     'OpenMMPropagator',
-    'AmberPropagator', 
+    'AmberPropagator',
     'Plugin',
     'TrajectoryTree',
     'Trajectory',
@@ -70,8 +70,6 @@ except ImportError:
 
 if shutil.which("sander"):
     from .core.propagators._amber import AmberPropagator
-
-
 
 
 from .analysis import TrajectoryTree, Trajectory
