@@ -7,7 +7,6 @@ from .base import SerialPropagator
 from ..state import State
 
 
-
 class SubprocessPropagator(SerialPropagator):
     """Propagates a trajectory segment by running an external program.
     The program is executed in the directory created by the
