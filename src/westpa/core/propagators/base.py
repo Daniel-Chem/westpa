@@ -9,7 +9,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-#class PropagatorError()
+# class PropagatorError()
+
 
 class _PropagatorBase(ABC):
     DEFAULT_SEGMENT_DIR_TEMPLATE = 'traj_segs/{n_iter:06d}/{seg_id:06d}'
