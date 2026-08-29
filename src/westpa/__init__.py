@@ -20,7 +20,9 @@ __all__ = [
     'Sink',
     'SerialPropagator',
     'VectorizedPropagator',
+    'GromacsPropagator',
     'OpenMMPropagator',
+    'AmberPropagator',
     'Plugin',
     'TrajectoryTree',
     'Trajectory',
@@ -29,6 +31,8 @@ __all__ = [
     'TargetState',
     '_rc',
 ]
+
+import shutil
 
 from .core.state import State
 from .core.segment import Segment
@@ -55,10 +59,18 @@ from .core.simulation import Simulation
 from .core.source_sink import Source, Sink
 from .core.plugins import Plugin
 
+if shutil.which('gmx'):
+    from .core.propagators._gromacs import GromacsPropagator
+
 try:
     from .core.propagators._openmm import OpenMMPropagator
 except ImportError:
     pass
+
+
+if shutil.which("sander"):
+    from .core.propagators._amber import AmberPropagator
+
 
 from .analysis import TrajectoryTree, Trajectory
 
