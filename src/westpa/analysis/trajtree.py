@@ -10,6 +10,7 @@ import numpy as np
 import pygraphviz as pgv
 
 from ..core._data_manager import DataManager  # noqa
+from westpa.cli.tools.w_pdist import WPDist
 
 
 class SegmentPointer(NamedTuple):
@@ -101,9 +102,12 @@ class TrajectoryTree:
         load_pcoords=True,
         load_auxdata=False,
     ):
+
+        self.file_path=datafile
         self.data_manager = DataManager(datafile)
         self.data_manager.open_backing(mode='r')
 
+        #TODO: Ask jeff why first = None and immediatly overwirte
         self._load_pcoords = None
         self._load_auxdata = None
 
@@ -412,6 +416,232 @@ class TrajectoryTree:
 
         """
         return TrajectoryTreeViewer(self, first_iter, last_iter, x_func, x_label)
+
+    def call_pdist(self,pdist,bins,first_iter=1, last_iter=None):
+        tool = WPDist()
+        tool.make_parser_and_process(args=[
+            '-W', f'{self.file_path}',
+            '-o', f'{pdist}',
+            '-b', f'{bins}',
+            '--first-iter', f'{first_iter}',
+            '--last-iter', f'{last_iter}',
+        ])
+        with tool.work_manager:
+            tool.go()
+
+
+
+    def plothist_average(self,dimension : int =  None,dimension_label : str = None,observable=lambda seg: seg.pcoord[-1,0], label=None, first_iter=1, last_iter=None,bins=100):
+        """
+        Reimplementation of the plothist AveragePlotHist class
+
+        :param observable: function to obtain
+        :param label: str to label the observable as in the plot
+        :param first_iter: int, optional
+        :param last_iter: int, optional
+        :return: plot
+        """
+        print("Hello")
+        print("Dimension:", dimension)
+        print("Dimension label:", dimension_label)
+
+        self.call_pdist(pdist="pdist.h5",bins=bins,first_iter=first_iter,last_iter=last_iter)
+
+
+
+
+    """
+
+    description = '''\
+    Plot a probability distribution averaged over multiple iterations. The
+    probability distribution must have been previously extracted with ``w_pdist``
+    (or, at least, must be compatible with the output format of ``w_pdist``; see
+    ``w_pdist --help`` for more information).
+
+    '''
+
+        def add_args(self, parser):
+            igroup = self.input_arg_group
+            igroup.add_argument(
+                '--first-iter',
+                dest='first_iter',
+                type=int,
+                metavar='N_ITER',
+                default=1,
+                help='''Begin averaging at iteration N_ITER (default: %(default)d).''',
+            )
+            igroup.add_argument(
+                '--last-iter',
+                dest='last_iter',
+                type=int,
+                metavar='N_ITER',
+                help='''Conclude averaging with N_ITER, inclusive (default: last completed iteration).''',
+            )
+
+        def do_average_plot_2d(self):
+            '''Plot the histogram for iteration self.n_iter'''
+
+            !!!
+            idim0 = self.dimensions[0]['idim']
+                > # An array of dicts describing what dimensions to work with and what their ranges should be for the plots.
+                  # instantiated as l:75
+            !!!
+
+            idim1 = self.dimensions[1]['idim']
+
+
+            !!!
+            n_iters = self.input_h5['n_iter'][...] # pulls the entire array [...] is the same [:] 
+                                                   # if you dont include it returns an object instead
+
+
+            iiter_start = np.searchsorted(n_iters, self.iter_start)  # search,finds and returns the indices where elements 
+                                                                     # should be inserted into an array to maintain its 
+                                                                     # sorted order 
+                                                                     # n_iters would be the array that gets searched
+                                                                     # iter_start is what value is getting searched
+
+
+            iiter_stop = np.searchsorted(n_iters, self.iter_stop) # search,finds and returns the indices where elements 
+                                                                  # should be inserted into an array to maintain its 
+                                                                  # sorted order 
+                                                                  # n_iters would be the array that gets searched
+                                                                  # iter_stop is what value is getting searched
+
+
+
+            binbounds_0 = self.input_h5['binbounds_{}'.format(idim0)][...] #equivalent to f'binbounds_{idim0}'
+
+            midpoints_0 = self.input_h5['midpoints_{}'.format(idim0)][...]
+
+            binbounds_1 = self.input_h5['binbounds_{}'.format(idim1)][...]
+
+            midpoints_1 = self.input_h5['midpoints_{}'.format(idim1)][...]
+
+
+            !!!
+
+            for iiter in range(iiter_start, iiter_stop):
+
+                iter_hist = sum_except_along(self.input_h5['histograms'][iiter], [idim0, idim1])
+
+                                def sum_except_along(array, axes):
+                                '''Reduce the given array by addition over all axes except those listed in the scalar or
+                                iterable ``axes``'''
+
+                                #!check thats iterable over axis can be created
+                                try:
+                                    iter(axes) 
+                                except TypeError:
+                                    axes = [axes]
+
+                                #! creates a set to remove duplicates
+                                kept = set(axes)
+
+                                #creates a list from the set of range  but removes the axis to be kept
+                                summed = list(set(range(array.ndim)) - kept)
+
+                                        array.ndim = 4 #number of dimensions because its wrapped in range it becomes {0,1,2,3}
+                                        kept = {1, 3}  #dimension to keep 
+                                        all axes:    {0, 1, 2, 3} 
+                                        summed:      {0, 2}
+
+
+                                # Reorder axes so that the kept axes are first, and in the order they
+                                # were given
+
+                                # transpose will re order the array, so that the first two columns are the axes to be kept list(axes) + summed which is the remaining dimensions 
+                                array = np.transpose(array, list(axes) + summed).copy()
+
+                                # Now, the last len(summed) axes are summed over
+
+                                #!iterates over the array and removes the last axis for as many axis as there is in summed (the ones not passed to the function)
+                                for _ in range(len(summed)):
+                                    array = np.add.reduce(array, axis=-1)
+
+                                #!returns array where []
+                                return array
+
+                #IF ITS THE FIRST ITERATION STORE THIS ITERATION HIST 
+                if iiter == iiter_start:
+                    hist = iter_hist
+
+                #OTHERWISE JUST APPEND IT 
+                else:
+                    hist += iter_hist
+
+
+            #ONCE APPENDING THE HISTOGRAMS ARE DONE MOVE ON TO  CALLING normhistnd
+            normhistnd(hist, [binbounds_0, binbounds_1])
+
+            #
+
+            self._do_2d_output(hist, [idim0, idim1], [midpoints_0, midpoints_1], [binbounds_0, binbounds_1])
+
+                        def _do_2d_output(self, hist, idims, midpoints, binbounds):
+                        enehist = self._ener_zero(hist)
+                        log10hist = np.log10(hist)
+
+                        if self.hdf5_output_filename:
+                            with h5py.File(self.hdf5_output_filename, 'w') as output_h5:
+                                h5io.stamp_creator_data(output_h5)
+                                output_h5.attrs['source_data'] = os.path.abspath(self.input_h5.filename)
+                                output_h5.attrs['source_dimensions'] = np.array(idims, np.min_scalar_type(max(idims)))
+                                output_h5.attrs['source_dimension_labels'] = np.array([dim['label'] for dim in self.dimensions])
+                                for idim in idims:
+                                    output_h5['midpoints_{}'.format(idim)] = midpoints[idim]
+                                output_h5['histogram'] = hist
+
+                        if self.plot_output_filename:
+                            if self.plotscale == 'energy':
+                                plothist = enehist
+                                label = r'$-\ln\,P(x)$'
+                            elif self.plotscale == 'log10':
+                                plothist = log10hist
+                                label = r'$\log_{10}\ P(\vec{x})$'
+                            else:
+                                plothist = hist
+                                plothist[~np.isfinite(plothist)] = np.nan
+                                label = r'$P(\vec{x})$'
+
+                            try:
+                                vmin, vmax = self.plotrange
+                            except TypeError:
+                                vmin, vmax = None, None
+
+                            pyplot.figure()
+                            # Transpose input so that axis 0 is displayed as x and axis 1 is displayed as y
+                            #            pyplot.imshow(plothist.T, interpolation='nearest', aspect='auto',
+                            #                          extent=(midpoints[0][0], midpoints[0][-1], midpoints[1][0], midpoints[1][-1]),
+                            #                          origin='lower', vmin=vmin, vmax=vmax)
+
+                            # The following reproduces the former calls to imshow and colorbar
+                            norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
+                            ax = pyplot.gca()
+                            nui = NonUniformImage(
+                                ax, extent=(midpoints[0][0], midpoints[0][-1], midpoints[1][0], midpoints[1][-1]), origin='lower', norm=norm
+                            )
+                            nui.set_data(midpoints[0], midpoints[1], plothist.T)
+                            ax.add_image(nui)
+                            ax.set_xlim(midpoints[0][0], midpoints[0][-1])
+                            ax.set_ylim(midpoints[1][0], midpoints[1][-1])
+                            cb = pyplot.colorbar(nui)
+                            cb.set_label(label)
+
+                            pyplot.xlabel(self.dimensions[0]['label'])
+                            pyplot.xlim(self.dimensions[0].get('lb'), self.dimensions[0].get('ub'))
+                            pyplot.ylabel(self.dimensions[1]['label'])
+                            pyplot.ylim(self.dimensions[1].get('lb'), self.dimensions[1].get('ub'))
+                            if self.plottitle:
+                                pyplot.title(self.plottitle)
+                            if self.postprocess_function:
+                                self.postprocess_function(plothist, midpoints, binbounds)
+                            if self.plot_contour:
+                                pyplot.contour(midpoints[0], midpoints[1], plothist.T)
+                            pyplot.savefig(self.plot_output_filename)
+    """
+
+
 
     def __repr__(self):
         return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
