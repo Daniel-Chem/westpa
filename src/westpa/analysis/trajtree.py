@@ -5,18 +5,137 @@ from typing import NamedTuple
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.image import NonUniformImage
 import networkx as nx
 import numpy as np
 import pygraphviz as pgv
 
 from ..core._data_manager import DataManager  # noqa
 from westpa.cli.tools.w_pdist import WPDist
+from westpa.cli.tools.plothist import sum_except_along
+from westpa.fasthist import normhistnd
+import h5py
 
 
 class SegmentPointer(NamedTuple):
     n_iter: int
     seg_id: int
 
+
+class Pdist_DataManager:
+    def __init__(self, pdist_filename, first_iter=0, last_iter=None, enerzero: str = 'min'):
+        self._pdist_filename = pdist_filename
+        self.h5file = None
+        self._first_iter = first_iter
+        self._last_iter = last_iter
+        self.pdist_niters=self._fetch_n_iters()
+        self.first_iter_idx=self._fetch_iter_start_index()
+        self.last_iter_idx=self._fetch_iter_end_index()
+        self._enerzero = enerzero
+
+    def _open(self):
+        self.h5file = h5py.File(self._pdist_filename, 'r')
+
+    def _close(self):
+        if self.h5file is not None:
+            self.h5file.close()
+            self.h5file = None
+
+    def _fetch_n_iters(self):
+        self._open()
+        pdist_niters = self.h5file['n_iter'][:]
+        self._close()
+        return pdist_niters
+
+    def _fetch_bin_bounds(self, dimension):
+        self._open()
+        binbound = f"binbounds_{dimension}"
+        pdist_binbound = self.h5file[binbound][:]
+        self._close()
+        self.pdist_binbound=pdist_binbound
+
+    # Todo: Add Error handling
+    def _fetch_iter_start_index(self):
+        start_index=np.searchsorted(self.pdist_niters,self._first_iter)
+        return start_index
+
+    #Todo: Add Error handling
+    def _fetch_iter_end_index(self):
+        # last_iter is inclusive, so the exclusive upper bound is last_iter + 1
+        end_index=np.searchsorted(self.pdist_niters,self._last_iter + 1)
+        return end_index
+
+    def _fetch_single_histogram(self,iteration):
+        self._open()
+        pdist_n_hist = self.h5file['histograms'][iteration]
+        self._close()
+        return pdist_n_hist
+
+    #! Must return a portion of histogram array equivalent (n,x,y) n is the amount of iterations
+    def _fetch_range_histogram(self):
+        histograms=[]
+        for i in range(self.first_iter_idx, self.last_iter_idx):
+            hist=self._fetch_single_histogram(i)
+            histograms.append(hist)
+            self.histograms= histograms
+
+    def _compute_average_histogram(self, dimension):
+        self._fetch_range_histogram()
+        self._fetch_bin_bounds(dimension)
+
+        hist = None
+        for iter_hist in self.histograms:
+            reduced = sum_except_along(iter_hist, dimension)
+            hist = reduced if hist is None else hist + reduced
+
+        normhistnd(hist, [self.pdist_binbound])
+        return hist
+
+    def _computeneglnpx(self, norm_hist):
+        neglnpx = -np.log(norm_hist)
+        if self._enerzero == 'min':
+            np.subtract(neglnpx, neglnpx.min(), out=neglnpx, casting="unsafe")
+        elif self._enerzero == 'max':
+            np.subtract(neglnpx, neglnpx.max(), out=neglnpx, casting="unsafe")
+        elif self._enerzero is not None:
+            np.subtract(neglnpx, self._enerzero, out=neglnpx, casting="unsafe")
+        return neglnpx
+
+    def plot(self,dimension,label=None):
+        norm_hist = self._compute_average_histogram(dimension)
+        neglnpx=self._computeneglnpx(norm_hist)
+        binbounds = np.asarray(self.pdist_binbound)
+
+        # bin bounds are usually edges (len = nbins + 1); convert to centers
+        # so x and y line up for plotting
+        if len(binbounds) == len(neglnpx) + 1:
+            x = (binbounds[:-1] + binbounds[1:]) / 2
+        elif len(binbounds) == len(neglnpx):
+            x = binbounds
+        else:
+            raise ValueError(
+                f"bin bounds length ({len(binbounds)}) doesn't match histogram "
+                f"length ({len(neglnpx)}) as edges or centers"
+            )
+
+        fig, ax = plt.subplots()
+        ax.plot(x, neglnpx, color="slateblue", label=label)
+        ax.set_xlabel("pcoord")
+        ax.set_ylabel(r"$-\ln P(x)$")
+        if label is not None:
+            ax.legend()
+
+        return fig
+
+
+
+
+
+
+
+
+    def _run_fetch_histogram(self):
+        pass
 
 class TrajectoryTree:
     """Interface for analyzing weighted ensemble trajectory data.
@@ -428,220 +547,155 @@ class TrajectoryTree:
         ])
         with tool.work_manager:
             tool.go()
+        self._pdist_data=Pdist_DataManager(pdist,first_iter,last_iter)
+
+    def _compute_and_assign_observable(self,observable,first_iter:int, last_iter=None,bins:int=100):
+
+        observables_per_iteration,ub,lb=self._extract_observable(first_iter,last_iter,observable)  #! list of touples, each  touple has the first array being the observable value the second is the weight
+        assigned_observables_per_iteration, bin_edges=self.assign_bins_to_observable(observables_per_iteration,bins,ub,lb) #! here each value has been assigned its position in the bins
+        return assigned_observables_per_iteration, bin_edges
+
+    def _extract_observable(self,first_iter,last_iter,observable):
+
+        ub = float("-inf")
+        lb = float("inf")
+        last_iter = last_iter or self.n_iters
+
+        # get the range of x to y that need to be iterated over
+        iter_range = range(1, self.n_iters + 1) if last_iter is None else range(first_iter, last_iter + 1)
+
+        observables_per_iteration = [] #! one tuple per iteration: (array of observable values for all segments, array of corresponding weights)
+
+        for n_iter in iter_range:
+            segments = self.get_segments(n_iter)
+            values = []
+            weights = []
+            for segment in segments:
+                try:
+                    value = np.atleast_1d(observable(segment))
+                except Exception as e:
+                    raise RuntimeError("Error occurred when extracting observable") from e
+                values.append(value)
+                weights.append(np.full(value.shape, segment.weight))
+                lb = min(lb, value.min())
+                ub = max(ub, value.max())
+            observables_per_iteration.append((np.concatenate(values), np.concatenate(weights)))
+        return observables_per_iteration, ub, lb
+
+    def assign_bins_to_observable(self, observables_per_iteration, bins, ub, lb,ener_zero=None):
+        # same upper-bound padding as w_pdist's _construct_bins_from_scalar, so the bin edges match
+        ub = ub * 1.01 if ub > 0 else ub / 1.01
+        assigned_observables_per_iteration = []
+        for values, weights in observables_per_iteration:
+            histogram, bin_edges = np.histogram(values, bins=bins, range=(lb, ub), weights=weights)
+            assigned_values = np.digitize(values, bin_edges)
+            assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
+
+        return assigned_observables_per_iteration, bin_edges
+
+    def _prapare_average_plothist_data(self,assigned_observables_per_iteration,bin_edges,ener_zero):
+        total_histogram = sum(iter_histogram for _, _, _, iter_histogram in assigned_observables_per_iteration)
+
+        probability_dist=self._normalize_histogram(total_histogram, bin_edges)
+        neglnpx = self._computeneglnpx(probability_dist, ener_zero=ener_zero)
+        return probability_dist, neglnpx
+
+    def _normalize_histogram(self, histogram, bin_edges):
+        diffs = np.diff(bin_edges)
+        normfac = (histogram * diffs).sum()
+        probability_dist = histogram / normfac
+        return probability_dist
+
+    def _computeneglnpx(self, probability_dist, ener_zero):
+        neglnpx = -np.log(probability_dist)
+        if ener_zero == 'min':
+            np.subtract(neglnpx, neglnpx.min(), out=neglnpx, casting="unsafe")
+        elif ener_zero == 'max':
+            np.subtract(neglnpx, neglnpx.max(), out=neglnpx, casting="unsafe")
+        elif ener_zero is not None:
+            np.subtract(neglnpx, ener_zero, out=neglnpx, casting="unsafe")
+        return neglnpx
 
 
+    def plothist_average(self,
+                               observable=lambda seg: seg.pcoord[-1, 0],
+                               label=None,
+                               first_iter:int=1,
+                               last_iter:int=None,
+                               bins:int=100,
+                               ener_zero='min' #str or int
+                               ):
 
-    def plothist_average(self,dimension : int =  None,dimension_label : str = None,observable=lambda seg: seg.pcoord[-1,0], label=None, first_iter=1, last_iter=None,bins=100):
-        """
-        Reimplementation of the plothist AveragePlotHist class
+        assigned_observables_per_iteration, bin_edges =  self._compute_and_assign_observable(
+                    observable=observable,
+                    first_iter=first_iter,
+                    last_iter=last_iter,
+                    bins=bins,
+        )
 
-        :param observable: function to obtain
-        :param label: str to label the observable as in the plot
-        :param first_iter: int, optional
-        :param last_iter: int, optional
-        :return: plot
-        """
-        print("Hello")
-        print("Dimension:", dimension)
-        print("Dimension label:", dimension_label)
+        probability_dist, neglnpx = self._prapare_average_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
 
-        self.call_pdist(pdist="pdist.h5",bins=bins,first_iter=first_iter,last_iter=last_iter)
-
-
-
-
-    """
-
-    description = '''\
-    Plot a probability distribution averaged over multiple iterations. The
-    probability distribution must have been previously extracted with ``w_pdist``
-    (or, at least, must be compatible with the output format of ``w_pdist``; see
-    ``w_pdist --help`` for more information).
-
-    '''
-
-        def add_args(self, parser):
-            igroup = self.input_arg_group
-            igroup.add_argument(
-                '--first-iter',
-                dest='first_iter',
-                type=int,
-                metavar='N_ITER',
-                default=1,
-                help='''Begin averaging at iteration N_ITER (default: %(default)d).''',
+        # bin bounds are usually edges (len = nbins + 1); convert to centers
+        # so x and y line up for plotting
+        if len(bin_edges) == len(neglnpx) + 1:
+            x = (bin_edges[:-1] + bin_edges[1:]) / 2
+        elif len(bin_edges) == len(neglnpx):
+            x = bin_edges
+        else:
+            raise ValueError(
+                f"bin bounds length ({len(bin_edges)}) doesn't match histogram "
+                f"length ({len(neglnpx)}) as edges or centers"
             )
-            igroup.add_argument(
-                '--last-iter',
-                dest='last_iter',
-                type=int,
-                metavar='N_ITER',
-                help='''Conclude averaging with N_ITER, inclusive (default: last completed iteration).''',
-            )
 
-        def do_average_plot_2d(self):
-            '''Plot the histogram for iteration self.n_iter'''
+        fig, ax = plt.subplots()
+        ax.plot(x, neglnpx, color="slateblue")
+        ax.set_xlabel(label if label is not None else 'pcoord')
+        ax.set_ylabel(r"$-\ln P(x)$")
+        plt.close(fig)
+        return fig
 
-            !!!
-            idim0 = self.dimensions[0]['idim']
-                > # An array of dicts describing what dimensions to work with and what their ranges should be for the plots.
-                  # instantiated as l:75
-            !!!
+    def _prapare_evolution_plothist_data(self,assigned_observables_per_iteration, bin_edges, ener_zero):
+        # each iteration normalized on its own -> shape (n_iters, n_bins)
+        probability_dist = np.array([
+            self._normalize_histogram(iter_histogram, bin_edges)
+            for _, _, _, iter_histogram in assigned_observables_per_iteration
+        ])
+        # -ln is elementwise; the min/max zero is taken over the whole matrix, so every iteration shares one reference
+        neglnpx = self._computeneglnpx(probability_dist, ener_zero=ener_zero)
+        return probability_dist, neglnpx
 
-            idim1 = self.dimensions[1]['idim']
+    def plothist_evolution(self,observable=lambda seg: seg.pcoord[-1, 0],
+                               label=None,
+                               first_iter:int=1,
+                               last_iter:int=None,
+                               bins:int=100,
+                               ener_zero='min'):
 
+        assigned_observables_per_iteration, bin_edges =  self._compute_and_assign_observable(
+                    observable=observable,
+                    first_iter=first_iter,
+                    last_iter=last_iter,
+                    bins=bins,)
 
-            !!!
-            n_iters = self.input_h5['n_iter'][...] # pulls the entire array [...] is the same [:] 
-                                                   # if you dont include it returns an object instead
+        probability_dist, neglnpx = self._prapare_evolution_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
 
+        midpoints = (bin_edges[:-1] + bin_edges[1:]) / 2
+        # like plothist evolution, each row is drawn at the end of its block: iteration n sits at y = n + 1
+        iter_axis = np.arange(first_iter, first_iter + neglnpx.shape[0]) + 1
 
-            iiter_start = np.searchsorted(n_iters, self.iter_start)  # search,finds and returns the indices where elements 
-                                                                     # should be inserted into an array to maintain its 
-                                                                     # sorted order 
-                                                                     # n_iters would be the array that gets searched
-                                                                     # iter_start is what value is getting searched
-
-
-            iiter_stop = np.searchsorted(n_iters, self.iter_stop) # search,finds and returns the indices where elements 
-                                                                  # should be inserted into an array to maintain its 
-                                                                  # sorted order 
-                                                                  # n_iters would be the array that gets searched
-                                                                  # iter_stop is what value is getting searched
-
-
-
-            binbounds_0 = self.input_h5['binbounds_{}'.format(idim0)][...] #equivalent to f'binbounds_{idim0}'
-
-            midpoints_0 = self.input_h5['midpoints_{}'.format(idim0)][...]
-
-            binbounds_1 = self.input_h5['binbounds_{}'.format(idim1)][...]
-
-            midpoints_1 = self.input_h5['midpoints_{}'.format(idim1)][...]
-
-
-            !!!
-
-            for iiter in range(iiter_start, iiter_stop):
-
-                iter_hist = sum_except_along(self.input_h5['histograms'][iiter], [idim0, idim1])
-
-                                def sum_except_along(array, axes):
-                                '''Reduce the given array by addition over all axes except those listed in the scalar or
-                                iterable ``axes``'''
-
-                                #!check thats iterable over axis can be created
-                                try:
-                                    iter(axes) 
-                                except TypeError:
-                                    axes = [axes]
-
-                                #! creates a set to remove duplicates
-                                kept = set(axes)
-
-                                #creates a list from the set of range  but removes the axis to be kept
-                                summed = list(set(range(array.ndim)) - kept)
-
-                                        array.ndim = 4 #number of dimensions because its wrapped in range it becomes {0,1,2,3}
-                                        kept = {1, 3}  #dimension to keep 
-                                        all axes:    {0, 1, 2, 3} 
-                                        summed:      {0, 2}
-
-
-                                # Reorder axes so that the kept axes are first, and in the order they
-                                # were given
-
-                                # transpose will re order the array, so that the first two columns are the axes to be kept list(axes) + summed which is the remaining dimensions 
-                                array = np.transpose(array, list(axes) + summed).copy()
-
-                                # Now, the last len(summed) axes are summed over
-
-                                #!iterates over the array and removes the last axis for as many axis as there is in summed (the ones not passed to the function)
-                                for _ in range(len(summed)):
-                                    array = np.add.reduce(array, axis=-1)
-
-                                #!returns array where []
-                                return array
-
-                #IF ITS THE FIRST ITERATION STORE THIS ITERATION HIST 
-                if iiter == iiter_start:
-                    hist = iter_hist
-
-                #OTHERWISE JUST APPEND IT 
-                else:
-                    hist += iter_hist
-
-
-            #ONCE APPENDING THE HISTOGRAMS ARE DONE MOVE ON TO  CALLING normhistnd
-            normhistnd(hist, [binbounds_0, binbounds_1])
-
-            #
-
-            self._do_2d_output(hist, [idim0, idim1], [midpoints_0, midpoints_1], [binbounds_0, binbounds_1])
-
-                        def _do_2d_output(self, hist, idims, midpoints, binbounds):
-                        enehist = self._ener_zero(hist)
-                        log10hist = np.log10(hist)
-
-                        if self.hdf5_output_filename:
-                            with h5py.File(self.hdf5_output_filename, 'w') as output_h5:
-                                h5io.stamp_creator_data(output_h5)
-                                output_h5.attrs['source_data'] = os.path.abspath(self.input_h5.filename)
-                                output_h5.attrs['source_dimensions'] = np.array(idims, np.min_scalar_type(max(idims)))
-                                output_h5.attrs['source_dimension_labels'] = np.array([dim['label'] for dim in self.dimensions])
-                                for idim in idims:
-                                    output_h5['midpoints_{}'.format(idim)] = midpoints[idim]
-                                output_h5['histogram'] = hist
-
-                        if self.plot_output_filename:
-                            if self.plotscale == 'energy':
-                                plothist = enehist
-                                label = r'$-\ln\,P(x)$'
-                            elif self.plotscale == 'log10':
-                                plothist = log10hist
-                                label = r'$\log_{10}\ P(\vec{x})$'
-                            else:
-                                plothist = hist
-                                plothist[~np.isfinite(plothist)] = np.nan
-                                label = r'$P(\vec{x})$'
-
-                            try:
-                                vmin, vmax = self.plotrange
-                            except TypeError:
-                                vmin, vmax = None, None
-
-                            pyplot.figure()
-                            # Transpose input so that axis 0 is displayed as x and axis 1 is displayed as y
-                            #            pyplot.imshow(plothist.T, interpolation='nearest', aspect='auto',
-                            #                          extent=(midpoints[0][0], midpoints[0][-1], midpoints[1][0], midpoints[1][-1]),
-                            #                          origin='lower', vmin=vmin, vmax=vmax)
-
-                            # The following reproduces the former calls to imshow and colorbar
-                            norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
-                            ax = pyplot.gca()
-                            nui = NonUniformImage(
-                                ax, extent=(midpoints[0][0], midpoints[0][-1], midpoints[1][0], midpoints[1][-1]), origin='lower', norm=norm
-                            )
-                            nui.set_data(midpoints[0], midpoints[1], plothist.T)
-                            ax.add_image(nui)
-                            ax.set_xlim(midpoints[0][0], midpoints[0][-1])
-                            ax.set_ylim(midpoints[1][0], midpoints[1][-1])
-                            cb = pyplot.colorbar(nui)
-                            cb.set_label(label)
-
-                            pyplot.xlabel(self.dimensions[0]['label'])
-                            pyplot.xlim(self.dimensions[0].get('lb'), self.dimensions[0].get('ub'))
-                            pyplot.ylabel(self.dimensions[1]['label'])
-                            pyplot.ylim(self.dimensions[1].get('lb'), self.dimensions[1].get('ub'))
-                            if self.plottitle:
-                                pyplot.title(self.plottitle)
-                            if self.postprocess_function:
-                                self.postprocess_function(plothist, midpoints, binbounds)
-                            if self.plot_contour:
-                                pyplot.contour(midpoints[0], midpoints[1], plothist.T)
-                            pyplot.savefig(self.plot_output_filename)
-    """
-
-
+        fig, ax = plt.subplots()
+        norm = mpl.colors.Normalize(vmin=None, vmax=None)
+        nui = NonUniformImage(ax, extent=(midpoints[0], midpoints[-1], iter_axis[0], iter_axis[-1]), origin='lower', norm=norm)
+        nui.set_data(midpoints, iter_axis, neglnpx)
+        ax.add_image(nui)
+        ax.set_xlim(midpoints[0], midpoints[-1])
+        ax.set_ylim(iter_axis[0], iter_axis[-1])
+        cb = fig.colorbar(nui, ax=ax)
+        cb.set_label(r'$-\ln\,P(x)$')
+        ax.set_xlabel(label if label is not None else 'pcoord')
+        ax.set_ylabel('WE Iteration')
+        plt.close(fig)
+        return fig
 
     def __repr__(self):
         return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
