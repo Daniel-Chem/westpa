@@ -23,6 +23,13 @@ def assign_bins_to_observable(self, observables_per_iteration, bins, ub, lb, ene
         assigned_values = np.digitize(values, bin_edges)
         assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
 
+def _normalize_histogram(self, histogram, bin_edges):
+    diffs = np.diff(bin_edges)
+    normfac = (histogram * diffs).sum()
+    probability_dist = histogram / normfac
+    return probability_dist
+
+
 # <<<< Pdist static methods
 
     return assigned_observables_per_iteration, bin_edges
@@ -477,12 +484,7 @@ class TrajectoryTree:
         neglnpx = self._computeneglnpx(probability_dist, ener_zero=ener_zero)
         return probability_dist, neglnpx
 
-    # ! Static because self is not utilized
-    def _normalize_histogram(self, histogram, bin_edges):
-        diffs = np.diff(bin_edges)
-        normfac = (histogram * diffs).sum()
-        probability_dist = histogram / normfac
-        return probability_dist
+
 
     def plothist_average(self,
                                observable=lambda seg: seg.pcoord[-1, 0],
