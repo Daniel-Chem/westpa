@@ -14,7 +14,7 @@ from ..core._data_manager import DataManager  # noqa
 from westpa.cli.tools.w_pdist import WPDist
 
 # >>>> Pdist static methods
-def assign_bins_to_observable(self, observables_per_iteration, bins, ub, lb, ener_zero=None):
+def assign_bins_to_observable(observables_per_iteration, bins, ub, lb, ener_zero=None):
     # same upper-bound padding as w_pdist's _construct_bins_from_scalar, so the bin edges match
     ub = ub * 1.01 if ub > 0 else ub / 1.01
     assigned_observables_per_iteration = []
@@ -22,17 +22,42 @@ def assign_bins_to_observable(self, observables_per_iteration, bins, ub, lb, ene
         histogram, bin_edges = np.histogram(values, bins=bins, range=(lb, ub), weights=weights)
         assigned_values = np.digitize(values, bin_edges)
         assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
+    return assigned_observables_per_iteration, bin_edges
 
-def _normalize_histogram(self, histogram, bin_edges):
+def normalize_histogram(histogram, bin_edges):
     diffs = np.diff(bin_edges)
     normfac = (histogram * diffs).sum()
     probability_dist = histogram / normfac
     return probability_dist
 
+def computeneglnpx(probability_dist, ener_zero):
+    neglnpx = -np.log(probability_dist)
+    if ener_zero == 'min':
+        np.subtract(neglnpx, neglnpx.min(), out=neglnpx, casting="unsafe")
+    elif ener_zero == 'max':
+        np.subtract(neglnpx, neglnpx.max(), out=neglnpx, casting="unsafe")
+    elif ener_zero is not None:
+        np.subtract(neglnpx, ener_zero, out=neglnpx, casting="unsafe")
+    return neglnpx
+
+def prapare_average_plothist_data(assigned_observables_per_iteration,bin_edges,ener_zero):
+    total_histogram = sum(iter_histogram for _, _, _, iter_histogram in assigned_observables_per_iteration)
+    probability_dist=normalize_histogram(total_histogram, bin_edges)
+    neglnpx = computeneglnpx(probability_dist, ener_zero=ener_zero)
+    return probability_dist, neglnpx
+
+def prapare_evolution_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero):
+    # each iteration normalized on its own -> shape (n_iters, n_bins)
+    probability_dist = np.array([
+        normalize_histogram(iter_histogram, bin_edges)
+        for _, _, _, iter_histogram in assigned_observables_per_iteration
+    ])
+    # -ln is elementwise; the min/max zero is taken over the whole matrix, so every iteration shares one reference
+    neglnpx = computeneglnpx(probability_dist, ener_zero=ener_zero)
+    return probability_dist, neglnpx
 
 # <<<< Pdist static methods
 
-    return assigned_observables_per_iteration, bin_edges
 
 class SegmentPointer(NamedTuple):
     n_iter: int
@@ -443,7 +468,7 @@ class TrajectoryTree:
     #Not static
     def _compute_and_assign_observable(self,observable,first_iter:int, last_iter=None,bins:int=100):
         observables_per_iteration,ub,lb=self._extract_observable(first_iter,last_iter,observable)  #! list of touples, each  touple has the first array being the observable value the second is the weight
-        assigned_observables_per_iteration, bin_edges=self.assign_bins_to_observable(observables_per_iteration,bins,ub,lb) #! here each value has been assigned its position in the bins
+        assigned_observables_per_iteration, bin_edges=assign_bins_to_observable(observables_per_iteration,bins,ub,lb) #! here each value has been assigned its position in the bins
         return assigned_observables_per_iteration, bin_edges
 
     #Not static
@@ -476,16 +501,6 @@ class TrajectoryTree:
             observables_per_iteration.append((np.concatenate(values), np.concatenate(weights)))
         return observables_per_iteration, ub, lb
 
-
-
-    def _prapare_average_plothist_data(self,assigned_observables_per_iteration,bin_edges,ener_zero):
-        total_histogram = sum(iter_histogram for _, _, _, iter_histogram in assigned_observables_per_iteration)
-        probability_dist=self._normalize_histogram(total_histogram, bin_edges)
-        neglnpx = self._computeneglnpx(probability_dist, ener_zero=ener_zero)
-        return probability_dist, neglnpx
-
-
-
     def plothist_average(self,
                                observable=lambda seg: seg.pcoord[-1, 0],
                                label=None,
@@ -502,7 +517,7 @@ class TrajectoryTree:
                     bins=bins,
         )
 
-        probability_dist, neglnpx = self._prapare_average_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
+        probability_dist, neglnpx = prapare_average_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
 
         # bin bounds are usually edges (len = nbins + 1); convert to centers
         # so x and y line up for plotting
@@ -523,30 +538,25 @@ class TrajectoryTree:
         plt.close(fig)
         return ax
 
-    def _prapare_evolution_plothist_data(self,assigned_observables_per_iteration, bin_edges, ener_zero):
-        # each iteration normalized on its own -> shape (n_iters, n_bins)
-        probability_dist = np.array([
-            self._normalize_histogram(iter_histogram, bin_edges)
-            for _, _, _, iter_histogram in assigned_observables_per_iteration
-        ])
-        # -ln is elementwise; the min/max zero is taken over the whole matrix, so every iteration shares one reference
-        neglnpx = self._computeneglnpx(probability_dist, ener_zero=ener_zero)
-        return probability_dist, neglnpx
-
-    def plothist_evolution(self,observable=lambda seg: seg.pcoord[-1, 0],
-                               label=None,
-                               first_iter:int=1,
-                               last_iter:int=None,
-                               bins:int=100,
-                               ener_zero='min'):
+    def plothist_evolution(self,
+                           observable_x=lambda seg: seg.pcoord[-1, 0],
+                           observable_y=None,
+                           label=None,
+                           first_iter:int=1,
+                           last_iter:int=None,
+                           bins:int=100,
+                           ener_zero='min'):
 
         assigned_observables_per_iteration, bin_edges =  self._compute_and_assign_observable(
-                    observable=observable,
+                    observable=observable_x,
                     first_iter=first_iter,
                     last_iter=last_iter,
-                    bins=bins,)
+                    bins=bins)
 
-        probability_dist, neglnpx = self._prapare_evolution_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
+
+
+
+        probability_dist, neglnpx = prapare_evolution_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
 
         midpoints = (bin_edges[:-1] + bin_edges[1:]) / 2
         # like plothist evolution, each row is drawn at the end of its block: iteration n sits at y = n + 1
