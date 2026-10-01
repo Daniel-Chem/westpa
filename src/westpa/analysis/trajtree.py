@@ -12,9 +12,6 @@ import pygraphviz as pgv
 
 from ..core._data_manager import DataManager  # noqa
 from westpa.cli.tools.w_pdist import WPDist
-from westpa.cli.tools.plothist import sum_except_along
-from westpa.fasthist import normhistnd
-import h5py
 
 
 class SegmentPointer(NamedTuple):
@@ -423,27 +420,12 @@ class TrajectoryTree:
         """
         return TrajectoryTreeViewer(self, first_iter, last_iter, x_func, x_label)
 
-    def call_pdist(self,pdist,bins,first_iter=1, last_iter=None):
-        tool = WPDist()
-        tool.make_parser_and_process(args=[
-            '-W', f'{self.file_path}',
-            '-o', f'{pdist}',
-            '-b', f'{bins}',
-            '--first-iter', f'{first_iter}',
-            '--last-iter', f'{last_iter}',
-        ])
-        with tool.work_manager:
-            tool.go()
-        self._pdist_data=Pdist_DataManager(pdist,first_iter,last_iter)
-
     def _compute_and_assign_observable(self,observable,first_iter:int, last_iter=None,bins:int=100):
-
         observables_per_iteration,ub,lb=self._extract_observable(first_iter,last_iter,observable)  #! list of touples, each  touple has the first array being the observable value the second is the weight
         assigned_observables_per_iteration, bin_edges=self.assign_bins_to_observable(observables_per_iteration,bins,ub,lb) #! here each value has been assigned its position in the bins
         return assigned_observables_per_iteration, bin_edges
 
     def _extract_observable(self,first_iter,last_iter,observable):
-
         ub = float("-inf")
         lb = float("inf")
         last_iter = last_iter or self.n_iters
@@ -460,6 +442,9 @@ class TrajectoryTree:
             for segment in segments:
                 try:
                     value = np.atleast_1d(observable(segment))
+
+                    #TODO: ADD logic for not re counting the first value always drop the first value in array if array
+
                 except Exception as e:
                     raise RuntimeError("Error occurred when extracting observable") from e
                 values.append(value)
