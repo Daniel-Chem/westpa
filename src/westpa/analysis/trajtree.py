@@ -13,6 +13,19 @@ import pygraphviz as pgv
 from ..core._data_manager import DataManager  # noqa
 from westpa.cli.tools.w_pdist import WPDist
 
+# >>>> Pdist static methods
+def assign_bins_to_observable(self, observables_per_iteration, bins, ub, lb, ener_zero=None):
+    # same upper-bound padding as w_pdist's _construct_bins_from_scalar, so the bin edges match
+    ub = ub * 1.01 if ub > 0 else ub / 1.01
+    assigned_observables_per_iteration = []
+    for values, weights in observables_per_iteration:
+        histogram, bin_edges = np.histogram(values, bins=bins, range=(lb, ub), weights=weights)
+        assigned_values = np.digitize(values, bin_edges)
+        assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
+
+# <<<< Pdist static methods
+
+    return assigned_observables_per_iteration, bin_edges
 
 class SegmentPointer(NamedTuple):
     n_iter: int
@@ -420,11 +433,13 @@ class TrajectoryTree:
         """
         return TrajectoryTreeViewer(self, first_iter, last_iter, x_func, x_label)
 
+    #Not static
     def _compute_and_assign_observable(self,observable,first_iter:int, last_iter=None,bins:int=100):
         observables_per_iteration,ub,lb=self._extract_observable(first_iter,last_iter,observable)  #! list of touples, each  touple has the first array being the observable value the second is the weight
         assigned_observables_per_iteration, bin_edges=self.assign_bins_to_observable(observables_per_iteration,bins,ub,lb) #! here each value has been assigned its position in the bins
         return assigned_observables_per_iteration, bin_edges
 
+    #Not static
     def _extract_observable(self,first_iter,last_iter,observable):
         ub = float("-inf")
         lb = float("inf")
@@ -454,16 +469,7 @@ class TrajectoryTree:
             observables_per_iteration.append((np.concatenate(values), np.concatenate(weights)))
         return observables_per_iteration, ub, lb
 
-    def assign_bins_to_observable(self, observables_per_iteration, bins, ub, lb,ener_zero=None):
-        # same upper-bound padding as w_pdist's _construct_bins_from_scalar, so the bin edges match
-        ub = ub * 1.01 if ub > 0 else ub / 1.01
-        assigned_observables_per_iteration = []
-        for values, weights in observables_per_iteration:
-            histogram, bin_edges = np.histogram(values, bins=bins, range=(lb, ub), weights=weights)
-            assigned_values = np.digitize(values, bin_edges)
-            assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
 
-        return assigned_observables_per_iteration, bin_edges
 
     def _prapare_average_plothist_data(self,assigned_observables_per_iteration,bin_edges,ener_zero):
         total_histogram = sum(iter_histogram for _, _, _, iter_histogram in assigned_observables_per_iteration)
