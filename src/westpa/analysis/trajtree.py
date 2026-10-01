@@ -22,120 +22,6 @@ class SegmentPointer(NamedTuple):
     seg_id: int
 
 
-class Pdist_DataManager:
-    def __init__(self, pdist_filename, first_iter=0, last_iter=None, enerzero: str = 'min'):
-        self._pdist_filename = pdist_filename
-        self.h5file = None
-        self._first_iter = first_iter
-        self._last_iter = last_iter
-        self.pdist_niters=self._fetch_n_iters()
-        self.first_iter_idx=self._fetch_iter_start_index()
-        self.last_iter_idx=self._fetch_iter_end_index()
-        self._enerzero = enerzero
-
-    def _open(self):
-        self.h5file = h5py.File(self._pdist_filename, 'r')
-
-    def _close(self):
-        if self.h5file is not None:
-            self.h5file.close()
-            self.h5file = None
-
-    def _fetch_n_iters(self):
-        self._open()
-        pdist_niters = self.h5file['n_iter'][:]
-        self._close()
-        return pdist_niters
-
-    def _fetch_bin_bounds(self, dimension):
-        self._open()
-        binbound = f"binbounds_{dimension}"
-        pdist_binbound = self.h5file[binbound][:]
-        self._close()
-        self.pdist_binbound=pdist_binbound
-
-    # Todo: Add Error handling
-    def _fetch_iter_start_index(self):
-        start_index=np.searchsorted(self.pdist_niters,self._first_iter)
-        return start_index
-
-    #Todo: Add Error handling
-    def _fetch_iter_end_index(self):
-        # last_iter is inclusive, so the exclusive upper bound is last_iter + 1
-        end_index=np.searchsorted(self.pdist_niters,self._last_iter + 1)
-        return end_index
-
-    def _fetch_single_histogram(self,iteration):
-        self._open()
-        pdist_n_hist = self.h5file['histograms'][iteration]
-        self._close()
-        return pdist_n_hist
-
-    #! Must return a portion of histogram array equivalent (n,x,y) n is the amount of iterations
-    def _fetch_range_histogram(self):
-        histograms=[]
-        for i in range(self.first_iter_idx, self.last_iter_idx):
-            hist=self._fetch_single_histogram(i)
-            histograms.append(hist)
-            self.histograms= histograms
-
-    def _compute_average_histogram(self, dimension):
-        self._fetch_range_histogram()
-        self._fetch_bin_bounds(dimension)
-
-        hist = None
-        for iter_hist in self.histograms:
-            reduced = sum_except_along(iter_hist, dimension)
-            hist = reduced if hist is None else hist + reduced
-
-        normhistnd(hist, [self.pdist_binbound])
-        return hist
-
-    def _computeneglnpx(self, norm_hist):
-        neglnpx = -np.log(norm_hist)
-        if self._enerzero == 'min':
-            np.subtract(neglnpx, neglnpx.min(), out=neglnpx, casting="unsafe")
-        elif self._enerzero == 'max':
-            np.subtract(neglnpx, neglnpx.max(), out=neglnpx, casting="unsafe")
-        elif self._enerzero is not None:
-            np.subtract(neglnpx, self._enerzero, out=neglnpx, casting="unsafe")
-        return neglnpx
-
-    def plot(self,dimension,label=None):
-        norm_hist = self._compute_average_histogram(dimension)
-        neglnpx=self._computeneglnpx(norm_hist)
-        binbounds = np.asarray(self.pdist_binbound)
-
-        # bin bounds are usually edges (len = nbins + 1); convert to centers
-        # so x and y line up for plotting
-        if len(binbounds) == len(neglnpx) + 1:
-            x = (binbounds[:-1] + binbounds[1:]) / 2
-        elif len(binbounds) == len(neglnpx):
-            x = binbounds
-        else:
-            raise ValueError(
-                f"bin bounds length ({len(binbounds)}) doesn't match histogram "
-                f"length ({len(neglnpx)}) as edges or centers"
-            )
-
-        fig, ax = plt.subplots()
-        ax.plot(x, neglnpx, color="slateblue", label=label)
-        ax.set_xlabel("pcoord")
-        ax.set_ylabel(r"$-\ln P(x)$")
-        if label is not None:
-            ax.legend()
-
-        return fig
-
-
-
-
-
-
-
-
-    def _run_fetch_histogram(self):
-        pass
 
 class TrajectoryTree:
     """Interface for analyzing weighted ensemble trajectory data.
@@ -496,6 +382,7 @@ class TrajectoryTree:
 
         return Trajectory(reversed(segments))
 
+    #! need to check how to add stride start here
     def to_networkx(self, first_iter=1, last_iter=None, copy=True):
         """Return a NetworkX representation of the trajectory tree.
 
@@ -595,27 +482,16 @@ class TrajectoryTree:
 
     def _prapare_average_plothist_data(self,assigned_observables_per_iteration,bin_edges,ener_zero):
         total_histogram = sum(iter_histogram for _, _, _, iter_histogram in assigned_observables_per_iteration)
-
         probability_dist=self._normalize_histogram(total_histogram, bin_edges)
         neglnpx = self._computeneglnpx(probability_dist, ener_zero=ener_zero)
         return probability_dist, neglnpx
 
+    # ! Static because self is not utilized
     def _normalize_histogram(self, histogram, bin_edges):
         diffs = np.diff(bin_edges)
         normfac = (histogram * diffs).sum()
         probability_dist = histogram / normfac
         return probability_dist
-
-    def _computeneglnpx(self, probability_dist, ener_zero):
-        neglnpx = -np.log(probability_dist)
-        if ener_zero == 'min':
-            np.subtract(neglnpx, neglnpx.min(), out=neglnpx, casting="unsafe")
-        elif ener_zero == 'max':
-            np.subtract(neglnpx, neglnpx.max(), out=neglnpx, casting="unsafe")
-        elif ener_zero is not None:
-            np.subtract(neglnpx, ener_zero, out=neglnpx, casting="unsafe")
-        return neglnpx
-
 
     def plothist_average(self,
                                observable=lambda seg: seg.pcoord[-1, 0],
@@ -652,7 +528,7 @@ class TrajectoryTree:
         ax.set_xlabel(label if label is not None else 'pcoord')
         ax.set_ylabel(r"$-\ln P(x)$")
         plt.close(fig)
-        return fig
+        return ax
 
     def _prapare_evolution_plothist_data(self,assigned_observables_per_iteration, bin_edges, ener_zero):
         # each iteration normalized on its own -> shape (n_iters, n_bins)
@@ -695,7 +571,7 @@ class TrajectoryTree:
         ax.set_xlabel(label if label is not None else 'pcoord')
         ax.set_ylabel('WE Iteration')
         plt.close(fig)
-        return fig
+        return ax
 
     def __repr__(self):
         return f'<{type(self).__name__} with {self.n_iters} iterations at {hex(id(self))}>'
@@ -716,6 +592,8 @@ def _to_pygraphviz(trajtree, first_iter=1, last_iter=None):
 
     return agraph
 
+
+#!add plotting on top ax object
 
 class TrajectoryTreeViewer:
     """Interactive trajectory tree viewer."""
