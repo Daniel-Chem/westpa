@@ -10,25 +10,66 @@ import networkx as nx
 import numpy as np
 import pygraphviz as pgv
 
+from .. import Segment
 from ..core._data_manager import DataManager  # noqa
 from westpa.cli.tools.w_pdist import WPDist
 
 # >>>> Pdist static methods
-def assign_bins_to_observable(observables_per_iteration, bins, ub, lb, ener_zero=None):
-    # same upper-bound padding as w_pdist's _construct_bins_from_scalar, so the bin edges match
-    ub = ub * 1.01 if ub > 0 else ub / 1.01
+def assign_bins_to_observable(observables_per_iteration, bins, ub, lb):
+    # now wirtten to be N dimensional
+
+    ub = np.where(ub > 0, ub * 1.01, ub / 1.01)
     assigned_observables_per_iteration = []
+    #!check the dimensionality of values contained withing observables_per_iteration
+    ndim = ub.size
+
     for values, weights in observables_per_iteration:
-        histogram, bin_edges = np.histogram(values, bins=bins, range=(lb, ub), weights=weights)
-        assigned_values = np.digitize(values, bin_edges)
+        assigned_values = []
+        histogram, bin_edges = np.histogramdd(values, bins=bins, range=list(zip(lb, ub)), weights=weights)
+        for dim in range(ndim):
+            assigned_value = np.digitize(values[:, dim],bin_edges[dim])-1
+            assigned_values.append(assigned_value)
+        assigned_values=np.stack(assigned_values,axis=1)
         assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
+
     return assigned_observables_per_iteration, bin_edges
 
+    """ 
+    if ndim == 1:
+        for values, weights in observables_per_iteration:
+            histogram, bin_edges = np.histogram(values[:, 0], bins=bins, range=(lb, ub), weights=weights)
+            assigned_values = np.digitize(values[:, 0], bin_edges)
+            assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
+    elif ndim == 2:
+        for values, weights in observables_per_iteration:
+            values_x=values[:,0]
+            values_y=values[:,1]
+            histogram, _, _ = np.histogram2d(values_x, values_y, bins=[edges_x, edges_y], weights=weights)
+            assigned_values = np.digitize(values, bin_edges)
+            assigned_observables_per_iteration.append((values, weights, assigned_values, histogram))
+    """
+
+"""
 def normalize_histogram(histogram, bin_edges):
+    #!NEEDS TO BE N DIMENSIONAL
     diffs = np.diff(bin_edges)
     normfac = (histogram * diffs).sum()
     probability_dist = histogram / normfac
     return probability_dist
+"""
+
+def normalize_histogram(histogram, bin_edges):
+  diffs = [np.diff(edges) for edges in bin_edges]
+  if histogram.ndim == 1:
+      normfac = (histogram * diffs[0]).sum()
+  else:
+      volumes = diffs[0]
+      for d in diffs[1:]:
+          volumes = np.multiply.outer(volumes, d)
+      histogram = histogram / volumes
+      normfac = histogram.sum()
+  probability_dist = histogram / normfac
+  return probability_dist
 
 def computeneglnpx(probability_dist, ener_zero):
     neglnpx = -np.log(probability_dist)
@@ -41,6 +82,7 @@ def computeneglnpx(probability_dist, ener_zero):
     return neglnpx
 
 def prapare_average_plothist_data(assigned_observables_per_iteration,bin_edges,ener_zero):
+    #!need to handle being N dimensional
     total_histogram = sum(iter_histogram for _, _, _, iter_histogram in assigned_observables_per_iteration)
     probability_dist=normalize_histogram(total_histogram, bin_edges)
     neglnpx = computeneglnpx(probability_dist, ener_zero=ener_zero)
@@ -466,44 +508,109 @@ class TrajectoryTree:
         return TrajectoryTreeViewer(self, first_iter, last_iter, x_func, x_label)
 
     #Not static
-    def _compute_and_assign_observable(self,observable,first_iter:int, last_iter=None,bins:int=100):
-        observables_per_iteration,ub,lb=self._extract_observable(first_iter,last_iter,observable)  #! list of touples, each  touple has the first array being the observable value the second is the weight
+    def _compute_and_assign_observable(self,observable_x,first_iter:int,observable_y=None,last_iter=None,bins:int=100):
+        observables_per_iteration,ub,lb=self._extract_observable(first_iter,last_iter,observable_x,observable_y)  #! list of touples, each  touple has the first array being the observable value the second is the weight
         assigned_observables_per_iteration, bin_edges=assign_bins_to_observable(observables_per_iteration,bins,ub,lb) #! here each value has been assigned its position in the bins
         return assigned_observables_per_iteration, bin_edges
 
     #Not static
-    def _extract_observable(self,first_iter,last_iter,observable):
-        ub = float("-inf")
-        lb = float("inf")
-        last_iter = last_iter or self.n_iters
+    def _extract_observable(self,first_iter,last_iter,observable_x,observable_y):
+
+        observables = [observable_x] if observable_y is None else [observable_x, observable_y]
+
+        ndim = len(observables)
+        lb = np.full(ndim, np.inf)
+        ub = np.full(ndim, -np.inf)
+
+        last_iter = last_iter if last_iter is not None else self.n_iters
 
         # get the range of x to y that need to be iterated over
         iter_range = range(1, self.n_iters + 1) if last_iter is None else range(first_iter, last_iter + 1)
 
-        observables_per_iteration = [] #! one tuple per iteration: (array of observable values for all segments, array of corresponding weights)
+        observables_per_iteration = [] # one (values (N, ndim), weights (N,)) tuple per iteration
 
         for n_iter in iter_range:
             segments = self.get_segments(n_iter)
-            values = []
-            weights = []
+            values, weights = [], []
             for segment in segments:
                 try:
-                    value = np.atleast_1d(observable(segment))
-
-                    #TODO: ADD logic for not re counting the first value always drop the first value in array if array
-
+                    obsv_value = []
+                    for observable in observables:
+                        obsv_value.append(np.atleast_1d(observable(segment))) #!store an array
                 except Exception as e:
                     raise RuntimeError("Error occurred when extracting observable") from e
+
+                lengths = [len(c) for c in obsv_value]
+                if len(set(lengths)) != 1:
+                    raise ValueError(f"Observables returned mismatched lengths: {lengths}")
+
+
+                value = np.column_stack(obsv_value)  # (n_frames, ndim) first column would be x second column is y
+                if segment.n_iter > 0 and len(value) > 1:
+                    value = value[1:]  # frame 0 duplicates the parent's last frame
+
                 values.append(value)
-                weights.append(np.full(value.shape, segment.weight))
-                lb = min(lb, value.min())
-                ub = max(ub, value.max())
+                weights.append(np.full(value.shape[0], segment.weight))
+
+                lb = np.minimum(lb, value.min(axis=0))
+                ub = np.maximum(ub, value.max(axis=0))
             observables_per_iteration.append((np.concatenate(values), np.concatenate(weights)))
-        return observables_per_iteration, ub, lb
+        return observables_per_iteration,ub,lb
+
+    def plothist_instant(self,
+                                observable = lambda seg: seg.pcoord[-1, 0],
+                                observable_y = None,
+                                label = None,
+                                label_y = None,
+                                iter:int = 1,
+                                bins:int = 100,
+                                ener_zero = 'min'):  # str or int
+
+        first_iter = iter
+        last_iter = iter
+
+        assigned_observables_per_iteration, bin_edges = self._compute_and_assign_observable(
+            observable_x=observable,
+            observable_y=observable_y,
+            first_iter=first_iter,
+            last_iter=last_iter,
+            bins=bins)
+
+        probability_dist, neglnpx = prapare_average_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
+
+        # bin_edges is a list of one array per observable (assign_bins_to_observable uses np.histogramdd)
+        x_edges = bin_edges[0]
+        x_mid = (x_edges[:-1] + x_edges[1:]) / 2
+
+        fig, ax = plt.subplots()
+
+        if observable_y is None:
+            ax.plot(x_mid, neglnpx, color="slateblue")
+            ax.set_xlabel(label if label is not None else 'pcoord')
+            ax.set_ylabel(r"$-\ln P(x)$")
+        else:
+            y_edges = bin_edges[1]
+            y_mid = (y_edges[:-1] + y_edges[1:]) / 2
+            norm = mpl.colors.Normalize(vmin=None, vmax=None)
+            nui = NonUniformImage(ax, extent=(x_mid[0], x_mid[-1], y_mid[0], y_mid[-1]), origin='lower', norm=norm)
+            # neglnpx axis 0 is x, axis 1 is y; set_data wants shape (len(y), len(x)), so transpose
+            nui.set_data(x_mid, y_mid, neglnpx.T)
+            ax.add_image(nui)
+            ax.set_xlim(x_mid[0], x_mid[-1])
+            ax.set_ylim(y_mid[0], y_mid[-1])
+            cb = fig.colorbar(nui, ax=ax)
+            cb.set_label(r'$-\ln\,P(x)$')
+            ax.set_xlabel(label if label is not None else 'pcoord x')
+            ax.set_ylabel(label_y if label_y is not None else 'pcoord y')
+
+        plt.close(fig)
+        return ax
 
     def plothist_average(self,
                                observable=lambda seg: seg.pcoord[-1, 0],
+                               observable_y=None,
                                label=None,
+                               label_y=None,
                                first_iter:int=1,
                                last_iter:int=None,
                                bins:int=100,
@@ -511,7 +618,8 @@ class TrajectoryTree:
                                ):
 
         assigned_observables_per_iteration, bin_edges =  self._compute_and_assign_observable(
-                    observable=observable,
+                    observable_x=observable,
+                    observable_y=observable_y,
                     first_iter=first_iter,
                     last_iter=last_iter,
                     bins=bins,
@@ -519,28 +627,36 @@ class TrajectoryTree:
 
         probability_dist, neglnpx = prapare_average_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
 
-        # bin bounds are usually edges (len = nbins + 1); convert to centers
-        # so x and y line up for plotting
-        if len(bin_edges) == len(neglnpx) + 1:
-            x = (bin_edges[:-1] + bin_edges[1:]) / 2
-        elif len(bin_edges) == len(neglnpx):
-            x = bin_edges
-        else:
-            raise ValueError(
-                f"bin bounds length ({len(bin_edges)}) doesn't match histogram "
-                f"length ({len(neglnpx)}) as edges or centers"
-            )
+        # bin_edges is a list of one array per observable (assign_bins_to_observable uses np.histogramdd)
+        x_edges = bin_edges[0]
+        x_mid = (x_edges[:-1] + x_edges[1:]) / 2
 
         fig, ax = plt.subplots()
-        ax.plot(x, neglnpx, color="slateblue")
-        ax.set_xlabel(label if label is not None else 'pcoord')
-        ax.set_ylabel(r"$-\ln P(x)$")
+
+        if observable_y is None:
+            ax.plot(x_mid, neglnpx, color="slateblue")
+            ax.set_xlabel(label if label is not None else 'pcoord')
+            ax.set_ylabel(r"$-\ln P(x)$")
+        else:
+            y_edges = bin_edges[1]
+            y_mid = (y_edges[:-1] + y_edges[1:]) / 2
+            norm = mpl.colors.Normalize(vmin=None, vmax=None)
+            nui = NonUniformImage(ax, extent=(x_mid[0], x_mid[-1], y_mid[0], y_mid[-1]), origin='lower', norm=norm)
+            # neglnpx axis 0 is x, axis 1 is y; set_data wants shape (len(y), len(x)), so transpose
+            nui.set_data(x_mid, y_mid, neglnpx.T)
+            ax.add_image(nui)
+            ax.set_xlim(x_mid[0], x_mid[-1])
+            ax.set_ylim(y_mid[0], y_mid[-1])
+            cb = fig.colorbar(nui, ax=ax)
+            cb.set_label(r'$-\ln\,P(x)$')
+            ax.set_xlabel(label if label is not None else 'pcoord x')
+            ax.set_ylabel(label_y if label_y is not None else 'pcoord y')
+
         plt.close(fig)
         return ax
 
     def plothist_evolution(self,
                            observable_x=lambda seg: seg.pcoord[-1, 0],
-                           observable_y=None,
                            label=None,
                            first_iter:int=1,
                            last_iter:int=None,
@@ -548,17 +664,17 @@ class TrajectoryTree:
                            ener_zero='min'):
 
         assigned_observables_per_iteration, bin_edges =  self._compute_and_assign_observable(
-                    observable=observable_x,
+                    observable_x=observable_x,
                     first_iter=first_iter,
                     last_iter=last_iter,
                     bins=bins)
 
-
-
-
         probability_dist, neglnpx = prapare_evolution_plothist_data(assigned_observables_per_iteration, bin_edges, ener_zero)
 
-        midpoints = (bin_edges[:-1] + bin_edges[1:]) / 2
+        # bin_edges is now a list of one array per observable (assign_bins_to_observable uses
+        # np.histogramdd); with a single observable that's bin_edges[0]
+        x_edges = bin_edges[0]
+        midpoints = (x_edges[:-1] + x_edges[1:]) / 2
         # like plothist evolution, each row is drawn at the end of its block: iteration n sits at y = n + 1
         iter_axis = np.arange(first_iter, first_iter + neglnpx.shape[0]) + 1
 
